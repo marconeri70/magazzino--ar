@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'magazzino-ar-v1';
+const CACHE_NAME = 'magazzino-ar-v2';
 const APP_SHELL = [
   './',
   './index.html',

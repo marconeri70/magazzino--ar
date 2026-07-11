@@ -9,11 +9,12 @@ Prima versione funzionante di una PWA per la gestione di prodotti e posizioni di
 - anagrafica prodotti con foto, quantità, unità, lotto, scadenza e scorta minima;
 - anagrafica delle posizioni: magazzino, zona, corsia, scaffale, ripiano e posto;
 - generazione e stampa del QR di ogni posizione;
+- generazione e stampa di un QR stabile per ogni prodotto;
+- scansione del QR prodotto per aprire direttamente la scheda “Trova” e vedere la posizione aggiornata;
 - entrate, uscite, rettifiche e spostamenti;
 - storico completo con data e operatore;
 - ricerca prodotto e guida AR assistita con verifica del QR corretto;
 - archivio offline tramite IndexedDB;
-- librerie barcode e QR caricate da CDN alla prima apertura e memorizzate dal browser/service worker nelle aperture successive;
 - installazione sul telefono come PWA;
 - esportazione e importazione del backup JSON;
 - dati dimostrativi caricabili dalle impostazioni.
@@ -53,8 +54,10 @@ Su `localhost` la fotocamera è normalmente consentita anche senza HTTPS.
 2. Usa **Stampa QR** sulla scheda della posizione.
 3. Applica l’etichetta QR sul relativo scaffale o posto.
 4. Apri **Prodotti**, scansiona il barcode e assegna una posizione.
-5. Per ritrovare il prodotto usa **Trova → Apri guida con fotocamera**.
-6. Quando arrivi allo scaffale, scansiona il QR: l’app conferma se la posizione è corretta.
+5. Nella scheda del prodotto premi **QR** e stampa l’etichetta da applicare sulla confezione o sul contenitore.
+6. Quando scansioni quel QR, l’app apre direttamente **Trova** e mostra la posizione corrente.
+7. Per raggiungere il prodotto usa **Apri guida con fotocamera**.
+8. Quando arrivi allo scaffale, scansiona il QR della posizione: l’app conferma se il punto è corretto.
 
 ## Formato dei QR di posizione
 
@@ -70,6 +73,19 @@ Esempio:
 MAGAR:LOC:M1-B-04-12-03-02
 ```
 
+
+## Formato dei QR prodotto
+
+Il contenuto generato è:
+
+```text
+MAGAR:PROD:ID-INTERNO-PRODOTTO
+```
+
+L’identificativo resta stabile anche se modifichi nome, quantità o posizione. La scritta della posizione stampata sull’etichetta è un riferimento visivo; scansionando il QR l’app mostra sempre la posizione più recente salvata nell’archivio.
+
+Il QR del prodotto può essere usato anche nelle operazioni di entrata, uscita e spostamento, oltre che nella ricerca.
+
 ## Limite della prima versione
 
 Ogni scheda prodotto rappresenta una sola giacenza e una sola posizione. Lo spostamento trasferisce quindi l’intera quantità. Per gestire lo stesso barcode contemporaneamente in più scaffali servirà il modulo successivo basato su lotti o unità di carico separate.
@@ -78,6 +94,6 @@ La guida AR di questa versione usa la fotocamera e la verifica del QR dello scaf
 
 ## Dati e privacy
 
-I dati restano nell’IndexedDB del browser usato. L’interfaccia e l’archivio funzionano offline; per assicurare anche il caricamento delle librerie esterne, apri almeno una volta l’app online dopo la pubblicazione. La cancellazione dei dati del sito o la disinstallazione possono rimuovere l’archivio. Usa periodicamente **Impostazioni → Esporta backup**.
+I dati restano nell’IndexedDB del browser usato. La cancellazione dei dati del sito o la disinstallazione possono rimuovere l’archivio. Usa periodicamente **Impostazioni → Esporta backup**.
 
 Per l’utilizzo contemporaneo da più telefoni sarà necessario collegare l’app a un database centralizzato con autenticazione e permessi utente.

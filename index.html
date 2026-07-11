@@ -10,8 +10,8 @@
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
-  <script defer src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script defer src="https://unpkg.com/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
   <script defer src="db.js"></script>
   <script defer src="app.js"></script>
 </head>
@@ -97,7 +97,7 @@
 
       <section id="view-products" class="view" aria-labelledby="productsTitle">
         <div class="page-heading compact">
-          <div><p class="eyebrow">Archivio</p><h1 id="productsTitle">Prodotti</h1><p>Giacenze, lotti, scadenze e posizione corrente.</p></div>
+          <div><p class="eyebrow">Archivio</p><h1 id="productsTitle">Prodotti</h1><p>Giacenze, lotti, scadenze e posizione corrente. Dopo il salvataggio usa il tasto QR per stampare l’etichetta del prodotto.</p></div>
           <button id="addProductBtn" class="btn btn-primary" type="button">＋ Aggiungi</button>
         </div>
         <div class="toolbar">

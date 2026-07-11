@@ -94,9 +94,11 @@
 
     $('#scanProductSearchBtn').addEventListener('click', () => {
       openScanner('Cerca prodotto', raw => {
-        $('#productSearch').value = raw;
+        const product = resolveScannedProduct(raw);
+        $('#productSearch').value = product ? product.barcode : raw;
         switchView('products');
         renderProducts();
+        if (product) notify(`Trovato: ${product.name}`, 'success');
       });
     });
 
@@ -120,7 +122,7 @@
 
     $('#scanMovementProductBtn').addEventListener('click', () => {
       openScanner('Prodotto da movimentare', raw => {
-        const product = getProductByBarcode(raw);
+        const product = resolveScannedProduct(raw);
         if (!product) {
           notify('Prodotto non ancora registrato.', 'error');
           return;
@@ -308,6 +310,7 @@
           <div class="product-side">
             <div class="quantity-block"><strong>${formatNumber(product.quantity)}</strong><small>${escapeHtml(product.unit || 'pz')}</small></div>
             <div class="menu-actions">
+              <button class="mini-btn qr-product-btn" data-product-action="qr" data-id="${product.id}" title="Crea e stampa QR prodotto">QR</button>
               <button class="mini-btn" data-product-action="find" data-id="${product.id}" title="Trova">➤</button>
               <button class="mini-btn" data-product-action="move" data-id="${product.id}" title="Movimenta">⇄</button>
               <button class="mini-btn" data-product-action="edit" data-id="${product.id}" title="Modifica">✎</button>
@@ -446,6 +449,7 @@
         </div>
         ${location?.note ? `<div class="inline-message">Indicazione: ${escapeHtml(location.note)}</div>` : ''}
         <button class="btn btn-primary" data-find-action="guide" data-id="${product.id}" ${location ? '' : 'disabled'} type="button">📷 Apri guida con fotocamera</button>
+        <button class="btn btn-secondary" data-find-action="qr" data-id="${product.id}" type="button">▦ Crea e stampa QR prodotto</button>
         <button class="btn btn-secondary" data-find-action="move" data-id="${product.id}" type="button">⇄ Registra movimento</button>
       </div>`;
   }
@@ -479,7 +483,7 @@
     openScanner('Scansiona prodotto o posizione', async raw => {
       const locationCode = parseLocationCode(raw);
       const location = getLocationByCode(locationCode);
-      const knownProduct = getProductByBarcode(raw);
+      const knownProduct = resolveScannedProduct(raw);
       if ((raw.startsWith('MAGAR:LOC:') || raw.startsWith('LOC:') || location) && !knownProduct) {
         if (location) {
           $('#locationSearch').value = location.code;
@@ -491,13 +495,15 @@
         return;
       }
 
-      const product = knownProduct || getProductByBarcode(raw);
+      const product = knownProduct;
       if (product) {
         state.selectedFindId = product.id;
-        switchView('products');
-        $('#productSearch').value = product.barcode;
-        renderProducts();
+        switchView('find');
+        $('#findSearch').value = product.barcode;
+        renderFindResults();
         notify(`Trovato: ${product.name}`, 'success');
+      } else if (parseProductId(raw)) {
+        notify('Il QR appartiene a un prodotto che non è presente in questo archivio.', 'error');
       } else {
         openProductForm(null, raw);
       }
@@ -512,7 +518,7 @@
 
     const type = action === 'scan-in' ? 'IN' : action === 'scan-out' ? 'OUT' : 'MOVE';
     openScanner(type === 'IN' ? 'Prodotto da caricare' : type === 'OUT' ? 'Prodotto da prelevare' : 'Prodotto da spostare', raw => {
-      const product = getProductByBarcode(raw);
+      const product = resolveScannedProduct(raw);
       if (!product) {
         if (type === 'IN') openProductForm(null, raw);
         else notify('Prodotto non registrato.', 'error');
@@ -592,7 +598,7 @@
       await loadState();
       renderAll();
       form.closest('dialog').close();
-      notify('Prodotto salvato.', 'success');
+      notify(existing ? 'Prodotto aggiornato.' : 'Prodotto salvato. Premi QR nella scheda per stampare l’etichetta.', 'success');
     } catch (error) {
       console.error(error);
       notify('Errore durante il salvataggio del prodotto.', 'error');
@@ -783,6 +789,7 @@
     if (!product) return;
 
     if (button.dataset.productAction === 'edit') openProductForm(product);
+    if (button.dataset.productAction === 'qr') printProductLabel(product);
     if (button.dataset.productAction === 'move') openMovementForm(product.id, 'MOVE');
     if (button.dataset.productAction === 'find') {
       state.selectedFindId = product.id;
@@ -835,38 +842,101 @@
     const product = getProduct(button.dataset.id);
     if (!product) return;
     if (button.dataset.findAction === 'guide') openArGuide(product.id);
+    if (button.dataset.findAction === 'qr') printProductLabel(product);
     if (button.dataset.findAction === 'move') openMovementForm(product.id, 'MOVE');
   }
 
   async function printLocationLabel(location) {
-    if (!window.QRCode) {
-      notify('Il generatore QR non è disponibile. Controlla la connessione e riprova.', 'error');
-      return;
-    }
-
     const label = document.createElement('div');
-    label.className = 'print-label';
+    label.className = 'print-label print-location-label';
     const qrBox = document.createElement('div');
+    qrBox.className = 'print-qr';
     const text = document.createElement('div');
-    text.innerHTML = `<h1>${escapeHtml(location.code)}</h1><p><strong>${escapeHtml(location.warehouse || '')}</strong></p><p>${escapeHtml(locationPath(location))}</p><p>${escapeHtml(location.note || '')}</p>`;
+    text.className = 'print-copy';
+    text.innerHTML = `<div class="print-kicker">POSIZIONE DI MAGAZZINO</div><h1>${escapeHtml(location.code)}</h1><p><strong>${escapeHtml(location.warehouse || '')}</strong></p><p>${escapeHtml(locationPath(location))}</p><p>${escapeHtml(location.note || '')}</p>`;
     label.append(qrBox, text);
     document.body.appendChild(label);
 
     try {
-      new QRCode(qrBox, {
-        text: `MAGAR:LOC:${location.code}`,
-        width: 420,
-        height: 420,
-        correctLevel: QRCode.CorrectLevel.M
-      });
-      await new Promise(resolve => setTimeout(resolve, 120));
+      await createQrCode(qrBox, `MAGAR:LOC:${location.code}`, 420);
+      await waitForPrintAssets();
       window.print();
     } catch (error) {
       console.error(error);
-      notify('Impossibile creare il QR.', 'error');
+      notify('Impossibile creare il QR della posizione.', 'error');
     } finally {
-      setTimeout(() => label.remove(), 500);
+      setTimeout(() => label.remove(), 700);
     }
+  }
+
+  async function printProductLabel(product) {
+    const location = getLocation(product.locationId);
+    const label = document.createElement('div');
+    label.className = 'print-label print-product-label';
+
+    const qrBox = document.createElement('div');
+    qrBox.className = 'print-qr';
+
+    const text = document.createElement('div');
+    text.className = 'print-copy';
+    const details = [
+      product.sku ? `Codice interno: ${escapeHtml(product.sku)}` : '',
+      product.barcode ? `Barcode: ${escapeHtml(product.barcode)}` : '',
+      product.lot ? `Lotto: ${escapeHtml(product.lot)}` : '',
+      product.expiry ? `Scadenza: ${escapeHtml(formatDate(product.expiry))}` : ''
+    ].filter(Boolean).map(value => `<p>${value}</p>`).join('');
+
+    text.innerHTML = `
+      <div class="print-kicker">ETICHETTA PRODOTTO</div>
+      <h1>${escapeHtml(product.name)}</h1>
+      ${details}
+      <p class="print-location"><strong>Posizione attuale:</strong><br>${escapeHtml(location ? locationPath(location) : 'Non assegnata')}</p>
+      <p class="print-hint">Scansiona il QR nell’app per vedere la posizione aggiornata.</p>`;
+
+    label.append(qrBox, text);
+    document.body.appendChild(label);
+
+    try {
+      await createQrCode(qrBox, `MAGAR:PROD:${product.id}`, 420);
+      await waitForPrintAssets();
+      window.print();
+    } catch (error) {
+      console.error(error);
+      notify('Impossibile creare il QR del prodotto.', 'error');
+    } finally {
+      setTimeout(() => label.remove(), 700);
+    }
+  }
+
+  async function createQrCode(container, text, size = 420) {
+    if (!window.QRCode) throw new Error('Generatore QR non disponibile');
+
+    if (typeof window.QRCode.toCanvas === 'function') {
+      const canvas = document.createElement('canvas');
+      container.appendChild(canvas);
+      await window.QRCode.toCanvas(canvas, text, {
+        width: size,
+        margin: 1,
+        errorCorrectionLevel: 'M'
+      });
+      return;
+    }
+
+    if (typeof window.QRCode === 'function') {
+      new window.QRCode(container, {
+        text,
+        width: size,
+        height: size,
+        correctLevel: window.QRCode.CorrectLevel?.M
+      });
+      return;
+    }
+
+    throw new Error('Formato libreria QR non riconosciuto');
+  }
+
+  function waitForPrintAssets() {
+    return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 180)));
   }
 
   async function saveSettings(event) {
@@ -1189,6 +1259,11 @@
     return state.products.find(product => normalizeCode(product.barcode) === normalized) || null;
   }
 
+  function resolveScannedProduct(value) {
+    const productId = parseProductId(value);
+    return productId ? getProduct(productId) : getProductByBarcode(value);
+  }
+
   function getLocation(id) {
     return state.locations.find(location => location.id === id) || null;
   }
@@ -1229,6 +1304,11 @@
 
   function parseLocationCode(value) {
     return String(value || '').trim().replace(/^MAGAR:LOC:/i, '').replace(/^LOC:/i, '').trim();
+  }
+
+  function parseProductId(value) {
+    const match = String(value || '').trim().match(/^MAGAR:PROD:(.+)$/i);
+    return match ? match[1].trim() : '';
   }
 
   function normalizeText(value) {
