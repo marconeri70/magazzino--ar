@@ -1,0 +1,26 @@
+{
+  "name": "Magazzino AR",
+  "short_name": "Magazzino AR",
+  "description": "Gestione prodotti, barcode, QR di posizione e guida AR assistita.",
+  "lang": "it-IT",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#eef3f8",
+  "theme_color": "#123b66",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

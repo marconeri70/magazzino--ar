@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#123b66">
+  <meta name="description" content="Gestione prodotti e posizioni di magazzino con barcode, QR e guida AR assistita.">
+  <title>Magazzino AR</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script defer src="db.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">▦</div>
+      <div>
+        <strong>Magazzino AR</strong>
+        <small id="connectionStatus">Archivio locale</small>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button id="installBtn" class="btn btn-ghost hidden" type="button">Installa</button>
+      <button id="quickScanBtn" class="btn btn-primary" type="button">📷 Scansiona</button>
+    </div>
+  </header>
+
+  <main class="app-shell">
+    <aside class="sidebar" aria-label="Navigazione principale">
+      <button class="nav-btn active" data-view="dashboard" type="button"><span>⌂</span> Home</button>
+      <button class="nav-btn" data-view="products" type="button"><span>▣</span> Prodotti</button>
+      <button class="nav-btn" data-view="locations" type="button"><span>⌖</span> Posizioni</button>
+      <button class="nav-btn" data-view="movements" type="button"><span>⇄</span> Movimenti</button>
+      <button class="nav-btn" data-view="find" type="button"><span>➤</span> Trova</button>
+      <button class="nav-btn" data-view="settings" type="button"><span>⚙</span> Impostazioni</button>
+    </aside>
+
+    <section class="content">
+      <section id="view-dashboard" class="view active" aria-labelledby="dashboardTitle">
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">Panoramica</p>
+            <h1 id="dashboardTitle">Gestione del magazzino</h1>
+            <p>Registra, sposta e ritrova ogni confezione attraverso barcode e QR di posizione.</p>
+          </div>
+          <button id="addProductHeroBtn" class="btn btn-primary" type="button">＋ Nuovo prodotto</button>
+        </div>
+
+        <div class="stats-grid">
+          <article class="stat-card">
+            <span class="stat-icon">▣</span>
+            <div><small>Prodotti</small><strong id="statProducts">0</strong></div>
+          </article>
+          <article class="stat-card">
+            <span class="stat-icon">∑</span>
+            <div><small>Pezzi totali</small><strong id="statQuantity">0</strong></div>
+          </article>
+          <article class="stat-card warning">
+            <span class="stat-icon">!</span>
+            <div><small>Sotto scorta</small><strong id="statLowStock">0</strong></div>
+          </article>
+          <article class="stat-card">
+            <span class="stat-icon">⌖</span>
+            <div><small>Posizioni</small><strong id="statLocations">0</strong></div>
+          </article>
+        </div>
+
+        <div class="dashboard-grid">
+          <article class="panel quick-panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">Operazioni rapide</p><h2>Cosa devi fare?</h2></div>
+            </div>
+            <div class="quick-actions">
+              <button class="action-tile" data-action="scan-in" type="button"><span>📥</span><strong>Carica</strong><small>Scansiona e aumenta la quantità</small></button>
+              <button class="action-tile" data-action="scan-out" type="button"><span>📤</span><strong>Preleva</strong><small>Scansiona e scarica il prodotto</small></button>
+              <button class="action-tile" data-action="move" type="button"><span>⇄</span><strong>Sposta</strong><small>Associa una nuova posizione</small></button>
+              <button class="action-tile" data-action="find" type="button"><span>➤</span><strong>Trova</strong><small>Apri la guida con fotocamera</small></button>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-heading">
+              <div><p class="eyebrow">Attività</p><h2>Ultimi movimenti</h2></div>
+              <button class="link-btn" data-view-link="movements" type="button">Vedi tutti</button>
+            </div>
+            <div id="recentMovements" class="activity-list empty-state">Nessun movimento registrato.</div>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-products" class="view" aria-labelledby="productsTitle">
+        <div class="page-heading compact">
+          <div><p class="eyebrow">Archivio</p><h1 id="productsTitle">Prodotti</h1><p>Giacenze, lotti, scadenze e posizione corrente.</p></div>
+          <button id="addProductBtn" class="btn btn-primary" type="button">＋ Aggiungi</button>
+        </div>
+        <div class="toolbar">
+          <label class="search-field"><span>⌕</span><input id="productSearch" type="search" placeholder="Cerca nome, codice, lotto o posizione"></label>
+          <select id="productFilter" aria-label="Filtra prodotti">
+            <option value="all">Tutti i prodotti</option>
+            <option value="low">Sotto scorta</option>
+            <option value="expiring">In scadenza entro 30 giorni</option>
+            <option value="unassigned">Senza posizione</option>
+          </select>
+          <button id="scanProductSearchBtn" class="btn btn-secondary" type="button">📷 Cerca codice</button>
+        </div>
+        <div id="productList" class="card-list"></div>
+      </section>
+
+      <section id="view-locations" class="view" aria-labelledby="locationsTitle">
+        <div class="page-heading compact">
+          <div><p class="eyebrow">Mappa interna</p><h1 id="locationsTitle">Posizioni</h1><p>Crea un QR per ogni scaffale, ripiano o posto.</p></div>
+          <button id="addLocationBtn" class="btn btn-primary" type="button">＋ Nuova posizione</button>
+        </div>
+        <div class="toolbar">
+          <label class="search-field"><span>⌕</span><input id="locationSearch" type="search" placeholder="Cerca magazzino, corsia, scaffale o codice"></label>
+          <button id="scanLocationSearchBtn" class="btn btn-secondary" type="button">📷 Leggi QR posizione</button>
+        </div>
+        <div id="locationList" class="location-grid"></div>
+      </section>
+
+      <section id="view-movements" class="view" aria-labelledby="movementsTitle">
+        <div class="page-heading compact">
+          <div><p class="eyebrow">Tracciabilità</p><h1 id="movementsTitle">Movimenti</h1><p>Storico delle entrate, uscite, rettifiche e trasferimenti.</p></div>
+          <button id="newMovementBtn" class="btn btn-primary" type="button">＋ Registra</button>
+        </div>
+        <div class="toolbar">
+          <label class="search-field"><span>⌕</span><input id="movementSearch" type="search" placeholder="Cerca prodotto, operatore o nota"></label>
+          <select id="movementFilter" aria-label="Filtra movimenti">
+            <option value="all">Tutti</option>
+            <option value="IN">Entrate</option>
+            <option value="OUT">Uscite</option>
+            <option value="MOVE">Spostamenti</option>
+            <option value="ADJUST">Rettifiche</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Data</th><th>Prodotto</th><th>Tipo</th><th>Quantità</th><th>Posizione</th><th>Operatore</th></tr></thead>
+            <tbody id="movementTableBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="view-find" class="view" aria-labelledby="findTitle">
+        <div class="page-heading compact">
+          <div><p class="eyebrow">Ricerca guidata</p><h1 id="findTitle">Trova un prodotto</h1><p>Seleziona il prodotto e raggiungi il QR della sua posizione.</p></div>
+        </div>
+        <div class="find-layout">
+          <article class="panel">
+            <label class="field"><span>Prodotto</span><input id="findSearch" type="search" placeholder="Nome, barcode o lotto"></label>
+            <div id="findResults" class="find-results"></div>
+          </article>
+          <article class="panel find-preview">
+            <div id="findEmpty" class="empty-illustration">
+              <div class="big-icon">➤</div>
+              <h2>Seleziona un prodotto</h2>
+              <p>Visualizzerai il percorso di magazzino e potrai aprire la guida con fotocamera.</p>
+            </div>
+            <div id="findSelected" class="hidden"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="view-settings" class="view" aria-labelledby="settingsTitle">
+        <div class="page-heading compact">
+          <div><p class="eyebrow">Configurazione</p><h1 id="settingsTitle">Impostazioni</h1><p>Dati operatore, backup e strumenti di prova.</p></div>
+        </div>
+        <div class="settings-grid">
+          <form id="settingsForm" class="panel form-grid">
+            <div class="panel-heading"><div><h2>Profilo operativo</h2><p>Viene registrato nello storico dei movimenti.</p></div></div>
+            <label class="field"><span>Nome azienda o reparto</span><input id="settingCompany" name="company" autocomplete="organization"></label>
+            <label class="field"><span>Nome operatore</span><input id="settingOperator" name="operator" autocomplete="name" required></label>
+            <button class="btn btn-primary" type="submit">Salva impostazioni</button>
+          </form>
+          <article class="panel">
+            <div class="panel-heading"><div><h2>Backup dati</h2><p>Esporta o ripristina l’archivio in formato JSON.</p></div></div>
+            <div class="stack-actions">
+              <button id="exportBtn" class="btn btn-secondary" type="button">⬇ Esporta backup</button>
+              <label class="btn btn-secondary file-btn">⬆ Importa backup<input id="importInput" type="file" accept="application/json" hidden></label>
+              <button id="demoBtn" class="btn btn-ghost" type="button">Carica dati dimostrativi</button>
+              <button id="resetBtn" class="btn btn-danger" type="button">Cancella tutto</button>
+            </div>
+          </article>
+          <article class="panel compatibility-card">
+            <div class="panel-heading"><div><h2>Compatibilità dispositivo</h2><p>Controllo delle funzioni disponibili.</p></div></div>
+            <ul id="compatibilityList" class="check-list"></ul>
+          </article>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="Navigazione mobile">
+    <button class="mobile-nav active" data-view="dashboard" type="button"><span>⌂</span><small>Home</small></button>
+    <button class="mobile-nav" data-view="products" type="button"><span>▣</span><small>Prodotti</small></button>
+    <button class="mobile-nav scan-main" id="mobileScanBtn" type="button"><span>📷</span><small>Scansiona</small></button>
+    <button class="mobile-nav" data-view="locations" type="button"><span>⌖</span><small>Posizioni</small></button>
+    <button class="mobile-nav" data-view="find" type="button"><span>➤</span><small>Trova</small></button>
+  </nav>
+
+  <dialog id="scannerDialog" class="modal scanner-modal">
+    <form method="dialog" class="modal-card dark-card">
+      <div class="modal-heading">
+        <div><p class="eyebrow">Fotocamera</p><h2 id="scannerTitle">Scansiona codice</h2></div>
+        <button class="icon-btn" value="cancel" aria-label="Chiudi" type="submit">×</button>
+      </div>
+      <div class="camera-stage">
+        <video id="scannerVideo" playsinline muted></video>
+        <div class="scanner-frame"><span></span><span></span><span></span><span></span></div>
+        <div id="scannerStatus" class="camera-status">Avvio fotocamera…</div>
+      </div>
+      <div class="scanner-actions">
+        <button id="torchBtn" class="btn btn-ghost hidden" type="button">🔦 Torcia</button>
+        <button id="switchCameraBtn" class="btn btn-ghost" type="button">↻ Cambia fotocamera</button>
+      </div>
+      <div class="manual-code">
+        <label class="field"><span>Inserimento manuale</span><input id="manualCodeInput" type="text" inputmode="numeric" placeholder="Digita il codice"></label>
+        <button id="manualCodeBtn" class="btn btn-secondary" type="button">Usa codice</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="productDialog" class="modal">
+    <form id="productForm" class="modal-card form-modal">
+      <div class="modal-heading">
+        <div><p class="eyebrow">Scheda prodotto</p><h2 id="productDialogTitle">Nuovo prodotto</h2></div>
+        <button class="icon-btn" data-close-dialog="productDialog" aria-label="Chiudi" type="button">×</button>
+      </div>
+      <input id="productId" name="id" type="hidden">
+      <div class="form-grid two-cols">
+        <label class="field field-span"><span>Codice a barre *</span><div class="input-action"><input id="productBarcode" name="barcode" required><button id="scanProductFieldBtn" class="mini-btn" type="button">📷</button></div></label>
+        <label class="field field-span"><span>Nome prodotto *</span><input id="productName" name="name" required></label>
+        <label class="field"><span>Codice interno / SKU</span><input id="productSku" name="sku"></label>
+        <label class="field"><span>Categoria</span><input id="productCategory" name="category"></label>
+        <label class="field"><span>Quantità</span><input id="productQuantity" name="quantity" type="number" min="0" step="0.01" value="0" required></label>
+        <label class="field"><span>Unità</span><select id="productUnit" name="unit"><option>pz</option><option>kg</option><option>g</option><option>l</option><option>ml</option><option>confezioni</option></select></label>
+        <label class="field"><span>Scorta minima</span><input id="productMinStock" name="minStock" type="number" min="0" step="0.01" value="0"></label>
+        <label class="field"><span>Lotto</span><input id="productLot" name="lot"></label>
+        <label class="field"><span>Scadenza</span><input id="productExpiry" name="expiry" type="date"></label>
+        <label class="field"><span>Posizione</span><select id="productLocation" name="locationId"><option value="">Nessuna posizione</option></select></label>
+        <label class="field field-span"><span>Descrizione / contenuto confezione</span><textarea id="productDescription" name="description" rows="3"></textarea></label>
+        <label class="field field-span"><span>Foto confezione</span><input id="productImage" name="image" type="file" accept="image/*" capture="environment"><small>La foto viene salvata nell’archivio del dispositivo.</small></label>
+        <div id="productImagePreview" class="image-preview field-span hidden"></div>
+      </div>
+      <div class="modal-actions"><button class="btn btn-ghost" data-close-dialog="productDialog" type="button">Annulla</button><button class="btn btn-primary" type="submit">Salva prodotto</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="locationDialog" class="modal">
+    <form id="locationForm" class="modal-card form-modal">
+      <div class="modal-heading">
+        <div><p class="eyebrow">Posizione fisica</p><h2 id="locationDialogTitle">Nuova posizione</h2></div>
+        <button class="icon-btn" data-close-dialog="locationDialog" aria-label="Chiudi" type="button">×</button>
+      </div>
+      <input id="locationId" name="id" type="hidden">
+      <div class="form-grid two-cols">
+        <label class="field field-span"><span>Codice posizione *</span><input id="locationCode" name="code" placeholder="es. M1-B-04-12-03-02" required></label>
+        <label class="field"><span>Magazzino</span><input id="locationWarehouse" name="warehouse" placeholder="Magazzino 1" required></label>
+        <label class="field"><span>Zona</span><input id="locationZone" name="zone" placeholder="B"></label>
+        <label class="field"><span>Corsia</span><input id="locationAisle" name="aisle" placeholder="04"></label>
+        <label class="field"><span>Scaffale</span><input id="locationRack" name="rack" placeholder="12"></label>
+        <label class="field"><span>Ripiano</span><input id="locationShelf" name="shelf" placeholder="03"></label>
+        <label class="field"><span>Posto</span><input id="locationBin" name="bin" placeholder="02"></label>
+        <label class="field field-span"><span>Indicazioni</span><textarea id="locationNote" name="note" rows="3" placeholder="Es. lato destro, secondo modulo"></textarea></label>
+      </div>
+      <div class="modal-actions"><button class="btn btn-ghost" data-close-dialog="locationDialog" type="button">Annulla</button><button class="btn btn-primary" type="submit">Salva posizione</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="movementDialog" class="modal">
+    <form id="movementForm" class="modal-card form-modal">
+      <div class="modal-heading">
+        <div><p class="eyebrow">Operazione</p><h2>Registra movimento</h2></div>
+        <button class="icon-btn" data-close-dialog="movementDialog" aria-label="Chiudi" type="button">×</button>
+      </div>
+      <div class="form-grid two-cols">
+        <label class="field field-span"><span>Prodotto *</span><div class="input-action"><select id="movementProduct" name="productId" required><option value="">Seleziona prodotto</option></select><button id="scanMovementProductBtn" class="mini-btn" type="button">📷</button></div></label>
+        <label class="field"><span>Tipo *</span><select id="movementType" name="type" required><option value="IN">Entrata</option><option value="OUT">Uscita</option><option value="MOVE">Spostamento</option><option value="ADJUST">Rettifica quantità</option></select></label>
+        <label class="field"><span>Quantità *</span><input id="movementQuantity" name="quantity" type="number" min="0" step="0.01" value="1" required></label>
+        <label id="movementDestinationField" class="field field-span hidden"><span>Nuova posizione *</span><div class="input-action"><select id="movementDestination" name="destinationId"><option value="">Seleziona posizione</option></select><button id="scanMovementLocationBtn" class="mini-btn" type="button">📷</button></div></label>
+        <label class="field field-span"><span>Nota</span><textarea id="movementNote" name="note" rows="3"></textarea></label>
+      </div>
+      <div id="movementWarning" class="inline-message hidden"></div>
+      <div class="modal-actions"><button class="btn btn-ghost" data-close-dialog="movementDialog" type="button">Annulla</button><button class="btn btn-primary" type="submit">Conferma</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="arDialog" class="modal ar-modal">
+    <div class="ar-card">
+      <video id="arVideo" playsinline muted autoplay></video>
+      <div class="ar-shade"></div>
+      <div class="ar-topbar">
+        <button id="closeArBtn" class="round-btn" type="button" aria-label="Chiudi">×</button>
+        <div><small>GUIDA AR ASSISTITA</small><strong id="arProductName">Prodotto</strong></div>
+        <span id="arLockBadge" class="ar-badge">Da calibrare</span>
+      </div>
+      <div class="ar-target">
+        <div class="pulse-ring"></div>
+        <div class="target-pin">⌖</div>
+        <strong id="arTargetLabel">Scansiona il QR della posizione</strong>
+      </div>
+      <div class="ar-bottom-card">
+        <div><small>DESTINAZIONE</small><strong id="arLocationPath">—</strong><p id="arLocationNote"></p></div>
+        <button id="calibrateArBtn" class="btn btn-primary" type="button">📷 Scansiona QR</button>
+        <button id="completeFindBtn" class="btn btn-secondary hidden" type="button">✓ Prodotto trovato</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="confirmDialog" class="modal small-modal">
+    <form method="dialog" class="modal-card">
+      <div class="modal-heading"><div><h2 id="confirmTitle">Conferma</h2><p id="confirmMessage"></p></div></div>
+      <div class="modal-actions"><button class="btn btn-ghost" value="cancel">Annulla</button><button id="confirmOkBtn" class="btn btn-danger" value="ok">Conferma</button></div>
+    </form>
+  </dialog>
+
+  <template id="emptyTemplate">
+    <div class="empty-illustration"><div class="big-icon">▦</div><h2>Nessun elemento</h2><p>Inizia aggiungendo il primo elemento.</p></div>
+  </template>
+</body>
+</html>
