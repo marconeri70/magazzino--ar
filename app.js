@@ -148,15 +148,21 @@
     $('#movementForm').addEventListener('submit', saveMovement);
     $('#settingsForm').addEventListener('submit', saveSettings);
 
-    $('#productQrBtn').addEventListener('click', () => {
-      const product = getProduct($('#productId').value);
-      if (product) printProductLabel(product);
-    });
+    const productQrBtn = $('#productQrBtn');
+    if (productQrBtn) {
+      productQrBtn.addEventListener('click', () => {
+        const product = getProduct($('#productId').value);
+        if (product) printProductLabel(product);
+      });
+    }
 
-    $('#locationQrBtn').addEventListener('click', () => {
-      const location = getLocation($('#locationId').value);
-      if (location) printLocationLabel(location);
-    });
+    const locationQrBtn = $('#locationQrBtn');
+    if (locationQrBtn) {
+      locationQrBtn.addEventListener('click', () => {
+        const location = getLocation($('#locationId').value);
+        if (location) printLocationLabel(location);
+      });
+    }
 
     $('#productImage').addEventListener('change', handleProductImage);
     $('#movementType').addEventListener('change', syncMovementFields);
@@ -557,8 +563,9 @@
     $('#productImage').value = '';
     state.currentImageData = product?.imageData || '';
     updateImagePreview();
-    $('#productQrBtn').classList.toggle('hidden', !product);
-    $('#saveProductQrBtn').textContent = product ? 'Salva e aggiorna QR' : 'Salva e crea QR';
+    $('#productQrBtn')?.classList.toggle('hidden', !product);
+    const saveProductQrBtn = $('#saveProductQrBtn');
+    if (saveProductQrBtn) saveProductQrBtn.textContent = product ? 'Salva e aggiorna QR' : 'Salva e crea QR';
     $('#productDialog').showModal();
     setTimeout(() => (product ? $('#productName') : ($('#productBarcode').value ? $('#productBarcode') : $('#productName'))).focus(), 80);
   }
@@ -657,8 +664,9 @@
     $('#locationShelf').value = location?.shelf || '';
     $('#locationBin').value = location?.bin || '';
     $('#locationNote').value = location?.note || '';
-    $('#locationQrBtn').classList.toggle('hidden', !location);
-    $('#saveLocationQrBtn').textContent = location ? 'Salva e aggiorna QR' : 'Salva e crea QR';
+    $('#locationQrBtn')?.classList.toggle('hidden', !location);
+    const saveLocationQrBtn = $('#saveLocationQrBtn');
+    if (saveLocationQrBtn) saveLocationQrBtn.textContent = location ? 'Salva e aggiorna QR' : 'Salva e crea QR';
     $('#locationDialog').showModal();
   }
 

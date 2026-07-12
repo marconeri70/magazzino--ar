@@ -1,13 +1,14 @@
 'use strict';
 
-const CACHE_NAME = 'magazzino-ar-v4-qr-offline';
+const CACHE_NAME = 'magazzino-ar-v5-1-stable';
+const VERSION = '5.1.0';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css',
-  './db.js',
-  './app.js',
-  './qrcode-local.js',
+  `./styles.css?v=${VERSION}`,
+  `./db.js?v=${VERSION}`,
+  `./app.js?v=${VERSION}`,
+  `./qrcode-local.js?v=${VERSION}`,
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png'
@@ -32,34 +33,33 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
 
-  const requestUrl = new URL(event.request.url);
+  const url = new URL(event.request.url);
+  const sameOrigin = url.origin === self.location.origin;
   const isNavigation = event.request.mode === 'navigate';
+  const isCoreAsset = sameOrigin && /\.(?:html|css|js|webmanifest)$/i.test(url.pathname);
 
-  if (isNavigation) {
+  if (isNavigation || isCoreAsset) {
     event.respondWith(
       fetch(event.request)
         .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put('./index.html', copy));
-          return response;
-        })
-        .catch(() => caches.match('./index.html'))
-    );
-    return;
-  }
-
-  event.respondWith(
-    caches.match(event.request).then(cached => {
-      const network = fetch(event.request)
-        .then(response => {
-          if (response && (response.ok || response.type === 'opaque')) {
+          if (response && response.ok) {
             const copy = response.clone();
             caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
           }
           return response;
         })
-        .catch(() => cached);
-      return cached || network;
-    })
+        .catch(() => caches.match(event.request).then(match => match || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  event.respondWith(
+    caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
+      if (response && (response.ok || response.type === 'opaque')) {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+      }
+      return response;
+    }))
   );
 });

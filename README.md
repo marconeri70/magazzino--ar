@@ -101,3 +101,14 @@ La guida AR di questa versione usa la fotocamera e la verifica del QR dello scaf
 I dati restano nell’IndexedDB del browser usato. La cancellazione dei dati del sito o la disinstallazione possono rimuovere l’archivio. Usa periodicamente **Impostazioni → Esporta backup**.
 
 Per l’utilizzo contemporaneo da più telefoni sarà necessario collegare l’app a un database centralizzato con autenticazione e permessi utente.
+
+## Correzione versione 5.1
+
+Questa versione corregge il blocco dei pulsanti **Nuovo prodotto**, **Nuova posizione** e degli strumenti nelle **Impostazioni**. Il problema era causato da file HTML e JavaScript non allineati. Sono stati inoltre aggiunti:
+
+- pulsanti QR mancanti nei moduli;
+- controlli JavaScript che evitano il blocco totale in caso di elemento mancante;
+- risorse con versione per evitare vecchi file nella cache;
+- service worker aggiornato con priorità ai file più recenti.
+
+Dopo la pubblicazione aprire una volta l'indirizzo con `?v=5.1.0`, quindi chiudere e riaprire l'app.
