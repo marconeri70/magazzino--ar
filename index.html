@@ -9,12 +9,12 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=6.0.0">
+  <link rel="stylesheet" href="styles.css?v=6.1.0">
   <script defer src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
-  <script defer src="qrcode-local.js?v=6.0.0"></script>
-  <script defer src="db.js?v=6.0.0"></script>
-  <script defer src="cloud.js?v=6.0.0"></script>
-  <script defer src="app.js?v=6.0.0"></script>
+  <script defer src="qrcode-local.js?v=6.1.0"></script>
+  <script defer src="db.js?v=6.1.0"></script>
+  <script defer src="cloud.js?v=6.1.0"></script>
+  <script defer src="app.js?v=6.1.0"></script>
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -194,9 +194,8 @@
 
           <form id="cloudForm" class="panel form-grid cloud-panel">
             <div class="panel-heading"><div><h2>Cloudflare D1</h2><p>Salvataggio automatico online e condivisione tra più dispositivi.</p></div><span id="cloudStatusBadge" class="cloud-status disabled">Non configurato</span></div>
-            <label class="field field-span"><span>Indirizzo API Worker</span><input id="cloudApiUrl" type="url" placeholder="https://magazzino-ar-api.nome.workers.dev"></label>
-            <label class="field"><span>Codice magazzino</span><input id="cloudWarehouseId" type="text" placeholder="magazzino-principale"></label>
-            <label class="field"><span>Chiave di accesso</span><input id="cloudAccessKey" type="password" autocomplete="off" placeholder="Chiave segreta Worker"></label>
+            <label class="field field-span"><span>Collegamento Cloudflare Worker</span><input id="cloudApiUrl" type="url" placeholder="https://magazzino-ar-api.nome.workers.dev"></label>
+            <p class="inline-message field-span">Inserisci soltanto l’indirizzo del Worker. L’archivio cloud principale viene usato automaticamente.</p>
             <div class="button-row field-span">
               <button id="testCloudBtn" class="btn btn-ghost" type="button">Verifica collegamento</button>
               <button class="btn btn-primary" type="submit">Salva e sincronizza</button>

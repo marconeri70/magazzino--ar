@@ -525,10 +525,8 @@
   function renderSettings() {
     $('#settingCompany').value = state.settings.company || '';
     $('#settingOperator').value = state.settings.operator || 'Operatore';
-    const cloud = window.magazzinoCloud?.getConfig?.() || { apiUrl: '', warehouseId: '', accessKey: '' };
+    const cloud = window.magazzinoCloud?.getConfig?.() || { apiUrl: '' };
     $('#cloudApiUrl').value = cloud.apiUrl || '';
-    $('#cloudWarehouseId').value = cloud.warehouseId || '';
-    $('#cloudAccessKey').value = cloud.accessKey || '';
     updateCloudStatus(state.cloudStatus);
   }
 
@@ -645,7 +643,7 @@
     }
     if (text) {
       const pending = state.cloudStatus.pending ? ` · ${state.cloudStatus.pending} modifiche in attesa` : '';
-      text.textContent = (state.cloudStatus.message || (state.cloudStatus.configured ? 'Sincronizzazione Cloudflare configurata.' : 'Inserisci i dati del Worker Cloudflare.')) + pending;
+      text.textContent = (state.cloudStatus.message || (state.cloudStatus.configured ? 'Sincronizzazione Cloudflare configurata.' : 'Inserisci il collegamento del Worker Cloudflare.')) + pending;
     }
     updateConnectionStatus();
   }
@@ -653,12 +651,10 @@
   async function saveCloudSettings(event) {
     event.preventDefault();
     const config = window.magazzinoCloud.saveConfig({
-      apiUrl: $('#cloudApiUrl').value,
-      warehouseId: $('#cloudWarehouseId').value,
-      accessKey: $('#cloudAccessKey').value
+      apiUrl: $('#cloudApiUrl').value
     });
-    if (!config.apiUrl || !config.warehouseId || !config.accessKey) {
-      notify('Compila indirizzo API, codice magazzino e chiave di accesso.', 'error');
+    if (!config.apiUrl) {
+      notify('Inserisci il collegamento Cloudflare Worker.', 'error');
       return;
     }
     try {
@@ -672,9 +668,7 @@
 
   async function testCloudConnection() {
     window.magazzinoCloud.saveConfig({
-      apiUrl: $('#cloudApiUrl').value,
-      warehouseId: $('#cloudWarehouseId').value,
-      accessKey: $('#cloudAccessKey').value
+      apiUrl: $('#cloudApiUrl').value
     });
     try {
       const result = await window.magazzinoCloud.testConnection();
@@ -701,7 +695,7 @@
       ['Archivio offline', 'indexedDB' in window],
       ['Installazione PWA', 'serviceWorker' in navigator],
       ['Lettura barcode nativa', 'BarcodeDetector' in window],
-      ['Generatore QR locale v6', Boolean(window.QRCode?.toCanvas)],
+      ['Generatore QR locale v6.1', Boolean(window.QRCode?.toCanvas)],
       ['Sincronizzazione Cloudflare', Boolean(window.magazzinoCloud)],
       ['Guida AR con fotocamera', Boolean(navigator.mediaDevices?.getUserMedia)],
       ['WebXR avanzato', 'xr' in navigator]

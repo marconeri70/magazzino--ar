@@ -1,7 +1,8 @@
 (() => {
   'use strict';
 
-  const CONFIG_KEY = 'magazzino-ar-cloud-config-v1';
+  const CONFIG_KEY = 'magazzino-ar-cloud-config-v2';
+  const LEGACY_CONFIG_KEY = 'magazzino-ar-cloud-config-v1';
   const QUEUE_KEY = 'magazzino-ar-cloud-queue-v1';
   const ALLOWED_STORES = ['products', 'locations', 'movements', 'settings'];
 
@@ -18,27 +19,33 @@
       this.db = db || null;
       this.onStatus = typeof onStatus === 'function' ? onStatus : null;
       this.onRemoteApplied = typeof onRemoteApplied === 'function' ? onRemoteApplied : null;
+      this.migrateLegacyConfig();
       this.emitStatus(this.isConfigured() ? 'idle' : 'disabled');
+    }
+
+    migrateLegacyConfig() {
+      if (localStorage.getItem(CONFIG_KEY)) return;
+      try {
+        const legacy = JSON.parse(localStorage.getItem(LEGACY_CONFIG_KEY) || '{}');
+        const apiUrl = String(legacy.apiUrl || '').trim().replace(/\/+$/, '');
+        if (apiUrl) localStorage.setItem(CONFIG_KEY, JSON.stringify({ apiUrl }));
+      } catch {
+        // Ignora una configurazione precedente danneggiata.
+      }
     }
 
     getConfig() {
       try {
         const parsed = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
-        return {
-          apiUrl: String(parsed.apiUrl || '').replace(/\/+$/, ''),
-          warehouseId: String(parsed.warehouseId || '').trim(),
-          accessKey: String(parsed.accessKey || '').trim()
-        };
+        return { apiUrl: String(parsed.apiUrl || '').trim().replace(/\/+$/, '') };
       } catch {
-        return { apiUrl: '', warehouseId: '', accessKey: '' };
+        return { apiUrl: '' };
       }
     }
 
     saveConfig(config) {
       const normalized = {
-        apiUrl: String(config?.apiUrl || '').trim().replace(/\/+$/, ''),
-        warehouseId: String(config?.warehouseId || '').trim(),
-        accessKey: String(config?.accessKey || '').trim()
+        apiUrl: String(config?.apiUrl || '').trim().replace(/\/+$/, '')
       };
       localStorage.setItem(CONFIG_KEY, JSON.stringify(normalized));
       this.emitStatus(this.isConfigured() ? 'idle' : 'disabled');
@@ -47,13 +54,13 @@
 
     clearConfig() {
       localStorage.removeItem(CONFIG_KEY);
+      localStorage.removeItem(LEGACY_CONFIG_KEY);
       localStorage.removeItem(QUEUE_KEY);
       this.emitStatus('disabled');
     }
 
     isConfigured() {
-      const config = this.getConfig();
-      return Boolean(config.apiUrl && config.warehouseId && config.accessKey);
+      return Boolean(this.getConfig().apiUrl);
     }
 
     getQueue() {
@@ -120,7 +127,6 @@
           ...options,
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.accessKey}`,
             ...(options.headers || {})
           },
           signal: controller.signal
@@ -135,8 +141,7 @@
 
     async testConnection() {
       this.emitStatus('syncing', 'Verifica Cloudflare…');
-      const config = this.getConfig();
-      const result = await this.request(`/api/health?warehouse=${encodeURIComponent(config.warehouseId)}`, { method: 'GET' });
+      const result = await this.request('/api/health', { method: 'GET' });
       this.emitStatus('online', 'Cloudflare collegato');
       return result;
     }
@@ -157,7 +162,7 @@
         while (queue.length) {
           const item = queue[0];
           if (item.action === 'replace-all') {
-            await this.request(`/api/warehouse?warehouse=${encodeURIComponent(this.getConfig().warehouseId)}`, { method: 'DELETE' });
+            await this.request('/api/warehouse', { method: 'DELETE' });
             queue.shift();
             this.saveQueue(queue);
             await this.enqueueCurrentSnapshot(false);
@@ -180,8 +185,7 @@
     }
 
     async sendMutation(item) {
-      const config = this.getConfig();
-      const common = { warehouseId: config.warehouseId, storeName: item.storeName, id: item.id };
+      const common = { storeName: item.storeName, id: item.id };
       if (item.action === 'put') {
         return this.request('/api/record', { method: 'PUT', body: JSON.stringify({ ...common, data: item.value }) });
       }
@@ -189,10 +193,10 @@
         return this.request('/api/record', { method: 'DELETE', body: JSON.stringify(common) });
       }
       if (item.action === 'clear-store') {
-        return this.request('/api/store', { method: 'DELETE', body: JSON.stringify({ warehouseId: config.warehouseId, storeName: item.storeName }) });
+        return this.request('/api/store', { method: 'DELETE', body: JSON.stringify({ storeName: item.storeName }) });
       }
       if (item.action === 'clear-all') {
-        return this.request(`/api/warehouse?warehouse=${encodeURIComponent(config.warehouseId)}`, { method: 'DELETE' });
+        return this.request('/api/warehouse', { method: 'DELETE' });
       }
       return null;
     }
@@ -214,13 +218,12 @@
     }
 
     async fetchRemote() {
-      const config = this.getConfig();
-      return this.request(`/api/sync?warehouse=${encodeURIComponent(config.warehouseId)}`, { method: 'GET' });
+      return this.request('/api/sync', { method: 'GET' });
     }
 
     async syncNow() {
       if (this.syncing) return false;
-      if (!this.isConfigured()) throw new Error('Inserisci prima i dati Cloudflare nelle Impostazioni.');
+      if (!this.isConfigured()) throw new Error('Inserisci prima il collegamento Cloudflare nelle Impostazioni.');
       if (!navigator.onLine) throw new Error('Connessione Internet non disponibile.');
       this.syncing = true;
       this.emitStatus('syncing', 'Sincronizzazione completa…');
@@ -231,7 +234,6 @@
 
         const remote = await this.fetchRemote();
         const stores = remote.stores || { products: [], locations: [], movements: [], settings: [] };
-        const remoteCount = ALLOWED_STORES.reduce((sum, name) => sum + (stores[name]?.length || 0), 0);
         const local = await this.db.exportAll();
         const localCount = ALLOWED_STORES.reduce((sum, name) => sum + (local[name]?.length || 0), 0);
 
