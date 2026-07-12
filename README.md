@@ -8,8 +8,8 @@ Prima versione funzionante di una PWA per la gestione di prodotti e posizioni di
 - inserimento manuale del codice come alternativa;
 - anagrafica prodotti con foto, quantità, unità, lotto, scadenza e scorta minima;
 - anagrafica delle posizioni: magazzino, zona, corsia, scaffale, ripiano e posto;
-- generazione e stampa del QR di ogni posizione;
-- generazione e stampa di un QR stabile per ogni prodotto;
+- generazione e stampa del QR di ogni posizione, anche direttamente dalla schermata di creazione/modifica;
+- generazione e stampa di un QR stabile per ogni prodotto, anche quando non esiste un barcode commerciale;
 - scansione del QR prodotto per aprire direttamente la scheda “Trova” e vedere la posizione aggiornata;
 - entrate, uscite, rettifiche e spostamenti;
 - storico completo con data e operatore;
@@ -51,10 +51,10 @@ Su `localhost` la fotocamera è normalmente consentita anche senza HTTPS.
 ## Preparazione del magazzino
 
 1. Apri **Posizioni** e crea ogni punto fisico.
-2. Usa **Stampa QR** sulla scheda della posizione.
+2. Premi **Salva e crea QR** direttamente nella schermata della posizione, oppure usa il pulsante **QR posizione** quando la modifichi.
 3. Applica l’etichetta QR sul relativo scaffale o posto.
-4. Apri **Prodotti**, scansiona il barcode e assegna una posizione.
-5. Nella scheda del prodotto premi **QR** e stampa l’etichetta da applicare sulla confezione o sul contenitore.
+4. Apri **Prodotti**, scansiona il barcode quando è presente e assegna una posizione. Il barcode è facoltativo.
+5. Premi **Salva e crea QR**: l’app genera un QR interno anche per i prodotti che non hanno un codice del produttore.
 6. Quando scansioni quel QR, l’app apre direttamente **Trova** e mostra la posizione corrente.
 7. Per raggiungere il prodotto usa **Apri guida con fotocamera**.
 8. Quando arrivi allo scaffale, scansiona il QR della posizione: l’app conferma se il punto è corretto.
@@ -73,6 +73,11 @@ Esempio:
 MAGAR:LOC:M1-B-04-12-03-02
 ```
 
+
+
+## Prodotti senza barcode
+
+Il campo **Codice a barre** è facoltativo. Quando viene lasciato vuoto, al salvataggio l’app assegna comunque al prodotto un identificativo interno univoco e genera un QR nel formato `MAGAR:PROD:...`. Questo QR può essere stampato, applicato alla confezione e utilizzato per ricerca, entrata, uscita e spostamento.
 
 ## Formato dei QR prodotto
 

@@ -148,6 +148,16 @@
     $('#movementForm').addEventListener('submit', saveMovement);
     $('#settingsForm').addEventListener('submit', saveSettings);
 
+    $('#productQrBtn').addEventListener('click', () => {
+      const product = getProduct($('#productId').value);
+      if (product) printProductLabel(product);
+    });
+
+    $('#locationQrBtn').addEventListener('click', () => {
+      const location = getLocation($('#locationId').value);
+      if (location) printLocationLabel(location);
+    });
+
     $('#productImage').addEventListener('change', handleProductImage);
     $('#movementType').addEventListener('change', syncMovementFields);
     $('#movementProduct').addEventListener('change', syncMovementFields);
@@ -266,7 +276,7 @@
     const products = state.products.filter(product => {
       const location = getLocation(product.locationId);
       const haystack = normalizeText([
-        product.name, product.barcode, product.sku, product.category, product.lot,
+        product.name, product.barcode, product.sku, product.category, product.lot, product.id,
         location?.code, locationPath(location)
       ].join(' '));
       if (query && !haystack.includes(query)) return false;
@@ -301,7 +311,7 @@
             </div>
             <p>${escapeHtml(product.description || product.category || 'Nessuna descrizione')}</p>
             <div class="meta-row">
-              <span class="chip">Barcode ${escapeHtml(product.barcode)}</span>
+              ${product.barcode ? `<span class="chip">Barcode ${escapeHtml(product.barcode)}</span>` : '<span class="chip">QR interno</span>'}
               ${product.lot ? `<span class="chip">Lotto ${escapeHtml(product.lot)}</span>` : ''}
               ${product.expiry ? `<span class="chip">Scad. ${formatDate(product.expiry)}</span>` : ''}
               <span class="chip">⌖ ${escapeHtml(location ? locationPath(location) : 'Senza posizione')}</span>
@@ -547,17 +557,20 @@
     $('#productImage').value = '';
     state.currentImageData = product?.imageData || '';
     updateImagePreview();
+    $('#productQrBtn').classList.toggle('hidden', !product);
+    $('#saveProductQrBtn').textContent = product ? 'Salva e aggiorna QR' : 'Salva e crea QR';
     $('#productDialog').showModal();
-    setTimeout(() => (product ? $('#productName') : $('#productBarcode')).focus(), 80);
+    setTimeout(() => (product ? $('#productName') : ($('#productBarcode').value ? $('#productBarcode') : $('#productName'))).focus(), 80);
   }
 
   async function saveProduct(event) {
     event.preventDefault();
     const form = event.currentTarget;
+    const afterSave = event.submitter?.dataset.afterSave || '';
     const id = $('#productId').value || uid();
     const existing = getProduct(id);
     const barcode = normalizeCode($('#productBarcode').value);
-    const duplicate = state.products.find(product => normalizeCode(product.barcode) === barcode && product.id !== id);
+    const duplicate = barcode ? state.products.find(product => normalizeCode(product.barcode) === barcode && product.id !== id) : null;
     if (duplicate) {
       notify(`Il codice è già usato da “${duplicate.name}”.`, 'error');
       return;
@@ -598,7 +611,11 @@
       await loadState();
       renderAll();
       form.closest('dialog').close();
-      notify(existing ? 'Prodotto aggiornato.' : 'Prodotto salvato. Premi QR nella scheda per stampare l’etichetta.', 'success');
+      notify(existing ? 'Prodotto aggiornato.' : 'Prodotto salvato. Il QR interno è pronto.', 'success');
+      if (afterSave === 'qr') {
+        const savedProduct = getProduct(product.id) || product;
+        setTimeout(() => printProductLabel(savedProduct), 180);
+      }
     } catch (error) {
       console.error(error);
       notify('Errore durante il salvataggio del prodotto.', 'error');
@@ -640,11 +657,14 @@
     $('#locationShelf').value = location?.shelf || '';
     $('#locationBin').value = location?.bin || '';
     $('#locationNote').value = location?.note || '';
+    $('#locationQrBtn').classList.toggle('hidden', !location);
+    $('#saveLocationQrBtn').textContent = location ? 'Salva e aggiorna QR' : 'Salva e crea QR';
     $('#locationDialog').showModal();
   }
 
   async function saveLocation(event) {
     event.preventDefault();
+    const afterSave = event.submitter?.dataset.afterSave || '';
     const id = $('#locationId').value || uid();
     const code = parseLocationCode($('#locationCode').value.trim());
     const duplicate = state.locations.find(location => normalizeText(location.code) === normalizeText(code) && location.id !== id);
@@ -674,7 +694,11 @@
       await loadState();
       renderAll();
       $('#locationDialog').close();
-      notify('Posizione salvata. Puoi stampare il relativo QR.', 'success');
+      notify('Posizione salvata. Il QR della posizione è pronto.', 'success');
+      if (afterSave === 'qr') {
+        const savedLocation = getLocation(location.id) || location;
+        setTimeout(() => printLocationLabel(savedLocation), 180);
+      }
     } catch (error) {
       console.error(error);
       notify('Errore durante il salvataggio della posizione.', 'error');
@@ -881,7 +905,7 @@
     text.className = 'print-copy';
     const details = [
       product.sku ? `Codice interno: ${escapeHtml(product.sku)}` : '',
-      product.barcode ? `Barcode: ${escapeHtml(product.barcode)}` : '',
+      product.barcode ? `Barcode: ${escapeHtml(product.barcode)}` : 'Identificazione: QR interno',
       product.lot ? `Lotto: ${escapeHtml(product.lot)}` : '',
       product.expiry ? `Scadenza: ${escapeHtml(formatDate(product.expiry))}` : ''
     ].filter(Boolean).map(value => `<p>${value}</p>`).join('');
@@ -1256,6 +1280,7 @@
 
   function getProductByBarcode(barcode) {
     const normalized = normalizeCode(barcode);
+    if (!normalized) return null;
     return state.products.find(product => normalizeCode(product.barcode) === normalized) || null;
   }
 
