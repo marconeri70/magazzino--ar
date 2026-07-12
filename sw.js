@@ -1,12 +1,13 @@
 'use strict';
 
-const CACHE_NAME = 'magazzino-ar-v3';
+const CACHE_NAME = 'magazzino-ar-v4-qr-offline';
 const APP_SHELL = [
   './',
   './index.html',
   './styles.css',
   './db.js',
   './app.js',
+  './qrcode-local.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png'

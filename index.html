@@ -11,7 +11,7 @@
   <link rel="apple-touch-icon" href="icons/icon-192.png">
   <link rel="stylesheet" href="styles.css">
   <script defer src="https://unpkg.com/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+  <script defer src="qrcode-local.js"></script>
   <script defer src="db.js"></script>
   <script defer src="app.js"></script>
 </head>
@@ -235,7 +235,7 @@
       </div>
       <input id="productId" name="id" type="hidden">
       <div class="form-grid two-cols">
-        <label class="field field-span"><span>Codice a barre (facoltativo)</span><div class="input-action"><input id="productBarcode" name="barcode" placeholder="Scansiona il codice oppure lascia vuoto"><button id="scanProductFieldBtn" class="mini-btn" type="button">📷</button></div><small>Se il prodotto non ha un barcode, l’app creerà comunque un QR interno univoco.</small></label>
+        <label class="field field-span"><span>Codice a barre *</span><div class="input-action"><input id="productBarcode" name="barcode" required><button id="scanProductFieldBtn" class="mini-btn" type="button">📷</button></div></label>
         <label class="field field-span"><span>Nome prodotto *</span><input id="productName" name="name" required></label>
         <label class="field"><span>Codice interno / SKU</span><input id="productSku" name="sku"></label>
         <label class="field"><span>Categoria</span><input id="productCategory" name="category"></label>
@@ -249,12 +249,7 @@
         <label class="field field-span"><span>Foto confezione</span><input id="productImage" name="image" type="file" accept="image/*" capture="environment"><small>La foto viene salvata nell’archivio del dispositivo.</small></label>
         <div id="productImagePreview" class="image-preview field-span hidden"></div>
       </div>
-      <div class="modal-actions">
-        <button class="btn btn-ghost" data-close-dialog="productDialog" type="button">Annulla</button>
-        <button id="productQrBtn" class="btn btn-secondary hidden" type="button">▦ QR prodotto</button>
-        <button class="btn btn-primary" type="submit">Salva prodotto</button>
-        <button id="saveProductQrBtn" class="btn btn-secondary" type="submit" data-after-save="qr">Salva e crea QR</button>
-      </div>
+      <div class="modal-actions"><button class="btn btn-ghost" data-close-dialog="productDialog" type="button">Annulla</button><button class="btn btn-primary" type="submit">Salva prodotto</button></div>
     </form>
   </dialog>
 
@@ -275,12 +270,7 @@
         <label class="field"><span>Posto</span><input id="locationBin" name="bin" placeholder="02"></label>
         <label class="field field-span"><span>Indicazioni</span><textarea id="locationNote" name="note" rows="3" placeholder="Es. lato destro, secondo modulo"></textarea></label>
       </div>
-      <div class="modal-actions">
-        <button class="btn btn-ghost" data-close-dialog="locationDialog" type="button">Annulla</button>
-        <button id="locationQrBtn" class="btn btn-secondary hidden" type="button">▦ QR posizione</button>
-        <button class="btn btn-primary" type="submit">Salva posizione</button>
-        <button id="saveLocationQrBtn" class="btn btn-secondary" type="submit" data-after-save="qr">Salva e crea QR</button>
-      </div>
+      <div class="modal-actions"><button class="btn btn-ghost" data-close-dialog="locationDialog" type="button">Annulla</button><button class="btn btn-primary" type="submit">Salva posizione</button></div>
     </form>
   </dialog>
 
