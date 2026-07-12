@@ -9,11 +9,12 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=5.2.0">
-  <script defer src="https://unpkg.com/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
-  <script defer src="qrcode-local.js?v=5.2.0"></script>
-  <script defer src="db.js?v=5.2.0"></script>
-  <script defer src="app.js?v=5.2.0"></script>
+  <link rel="stylesheet" href="styles.css?v=6.0.0">
+  <script defer src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
+  <script defer src="qrcode-local.js?v=6.0.0"></script>
+  <script defer src="db.js?v=6.0.0"></script>
+  <script defer src="cloud.js?v=6.0.0"></script>
+  <script defer src="app.js?v=6.0.0"></script>
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -39,7 +40,7 @@
       <button class="nav-btn" data-view="locations" type="button"><span>⌖</span> Posizioni</button>
       <button class="nav-btn" data-view="movements" type="button"><span>⇄</span> Movimenti</button>
       <button class="nav-btn" data-view="find" type="button"><span>➤</span> Trova</button>
-      <button class="nav-btn" data-view="settings" type="button"><span>⚙</span> Impostazioni</button>
+      <button class="nav-btn" data-view="settings" type="button"><span>🔒</span> Impostazioni</button>
     </aside>
 
     <section class="content">
@@ -179,6 +180,31 @@
             <label class="field"><span>Nome operatore</span><input id="settingOperator" name="operator" autocomplete="name" required></label>
             <button class="btn btn-primary" type="submit">Salva impostazioni</button>
           </form>
+
+          <article class="panel">
+            <div class="panel-heading"><div><h2>Protezione PIN</h2><p>Il PIN viene richiesto per entrare nelle impostazioni e per eliminare dati.</p></div><span class="security-badge">🔒 Protetto</span></div>
+            <div class="form-grid">
+              <label class="field"><span>Nuovo PIN</span><input id="newPin" type="password" inputmode="numeric" minlength="4" maxlength="12" placeholder="Minimo 4 cifre"></label>
+              <label class="field"><span>Ripeti nuovo PIN</span><input id="confirmNewPin" type="password" inputmode="numeric" minlength="4" maxlength="12" placeholder="Ripeti il PIN"></label>
+              <button id="changePinBtn" class="btn btn-secondary" type="button">Cambia PIN</button>
+              <button id="lockSettingsBtn" class="btn btn-ghost" type="button">🔒 Blocca subito impostazioni</button>
+              <small>PIN iniziale della nuova installazione: <strong>1234</strong>. Cambialo subito.</small>
+            </div>
+          </article>
+
+          <form id="cloudForm" class="panel form-grid cloud-panel">
+            <div class="panel-heading"><div><h2>Cloudflare D1</h2><p>Salvataggio automatico online e condivisione tra più dispositivi.</p></div><span id="cloudStatusBadge" class="cloud-status disabled">Non configurato</span></div>
+            <label class="field field-span"><span>Indirizzo API Worker</span><input id="cloudApiUrl" type="url" placeholder="https://magazzino-ar-api.nome.workers.dev"></label>
+            <label class="field"><span>Codice magazzino</span><input id="cloudWarehouseId" type="text" placeholder="magazzino-principale"></label>
+            <label class="field"><span>Chiave di accesso</span><input id="cloudAccessKey" type="password" autocomplete="off" placeholder="Chiave segreta Worker"></label>
+            <div class="button-row field-span">
+              <button id="testCloudBtn" class="btn btn-ghost" type="button">Verifica collegamento</button>
+              <button class="btn btn-primary" type="submit">Salva e sincronizza</button>
+              <button id="syncCloudBtn" class="btn btn-secondary" type="button">↻ Sincronizza ora</button>
+            </div>
+            <p id="cloudStatusText" class="inline-message field-span">I dati restano disponibili anche offline e vengono inviati a Cloudflare appena torna la connessione.</p>
+          </form>
+
           <article class="panel">
             <div class="panel-heading"><div><h2>Backup dati</h2><p>Esporta o ripristina l’archivio in formato JSON.</p></div></div>
             <div class="stack-actions">
@@ -203,6 +229,7 @@
     <button class="mobile-nav scan-main" id="mobileScanBtn" type="button"><span>📷</span><small>Scansiona</small></button>
     <button class="mobile-nav" data-view="locations" type="button"><span>⌖</span><small>Posizioni</small></button>
     <button class="mobile-nav" data-view="find" type="button"><span>➤</span><small>Trova</small></button>
+    <button class="mobile-nav" data-view="settings" type="button"><span>🔒</span><small>Impost.</small></button>
   </nav>
 
   <dialog id="scannerDialog" class="modal scanner-modal">
@@ -341,6 +368,52 @@
         <button id="completeFindBtn" class="btn btn-secondary hidden" type="button">✓ Prodotto trovato</button>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="productDetailDialog" class="modal">
+    <div class="modal-card detail-card">
+      <div class="modal-heading">
+        <div><p class="eyebrow">Dettagli prodotto</p><h2 id="productDetailTitle">Prodotto</h2></div>
+        <button class="icon-btn" data-close-dialog="productDetailDialog" aria-label="Chiudi" type="button">×</button>
+      </div>
+      <div id="productDetailContent"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" data-close-dialog="productDetailDialog" type="button">Chiudi</button>
+        <button id="detailProductQrBtn" class="btn btn-secondary" type="button">▦ QR</button>
+        <button id="detailProductFindBtn" class="btn btn-secondary" type="button">➤ Trova</button>
+        <button id="detailProductMoveBtn" class="btn btn-secondary" type="button">⇄ Movimenta</button>
+        <button id="detailProductEditBtn" class="btn btn-primary" type="button">✎ Modifica</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="locationDetailDialog" class="modal">
+    <div class="modal-card detail-card">
+      <div class="modal-heading">
+        <div><p class="eyebrow">Dettagli posizione</p><h2 id="locationDetailTitle">Posizione</h2></div>
+        <button class="icon-btn" data-close-dialog="locationDetailDialog" aria-label="Chiudi" type="button">×</button>
+      </div>
+      <div id="locationDetailContent"></div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" data-close-dialog="locationDetailDialog" type="button">Chiudi</button>
+        <button id="detailLocationQrBtn" class="btn btn-secondary" type="button">▦ QR posizione</button>
+        <button id="detailLocationEditBtn" class="btn btn-primary" type="button">✎ Modifica</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="pinDialog" class="modal small-modal">
+    <form id="pinForm" class="modal-card pin-card">
+      <div class="modal-heading">
+        <div><p class="eyebrow">Area protetta</p><h2>Inserisci il PIN</h2><p id="pinMessage">Il PIN è necessario per accedere alle impostazioni.</p></div>
+        <button class="icon-btn" data-close-dialog="pinDialog" aria-label="Chiudi" type="button">×</button>
+      </div>
+      <label class="field"><span>Codice PIN</span><input id="pinInput" type="password" inputmode="numeric" autocomplete="off" minlength="4" maxlength="12" required></label>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" data-close-dialog="pinDialog" type="button">Annulla</button>
+        <button class="btn btn-primary" type="submit">Sblocca</button>
+      </div>
+    </form>
   </dialog>
 
   <dialog id="confirmDialog" class="modal small-modal">

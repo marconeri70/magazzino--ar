@@ -24,8 +24,17 @@
     arStream: null,
     arProductId: null,
     deferredPrompt: null,
-    qrPreview: { dataUrl: '', filename: '', title: '' }
+    qrPreview: { dataUrl: '', filename: '', title: '' },
+    settingsUnlocked: false,
+    pinResolver: null,
+    pinPurpose: '',
+    currentDetailProductId: null,
+    currentDetailLocationId: null,
+    cloudStatus: { status: 'disabled', message: '', configured: false, pending: 0 }
   };
+
+  const ADMIN_PIN_HASH_KEY = 'magazzino-ar-admin-pin-hash-v1';
+  const DEFAULT_ADMIN_PIN = '1234';
 
   const movementLabels = {
     IN: 'Entrata',
@@ -43,9 +52,23 @@
     renderCompatibility();
 
     try {
+      await ensureDefaultPin();
       await window.warehouseDB.open();
+      window.magazzinoCloud?.init({
+        db: window.warehouseDB,
+        onStatus: updateCloudStatus,
+        onRemoteApplied: async () => {
+          await loadState();
+          renderAll();
+        }
+      });
+      window.warehouseDB.setMutationHandler(mutation => window.magazzinoCloud?.enqueue(mutation));
       await loadState();
       renderAll();
+
+      if (window.magazzinoCloud?.isConfigured() && navigator.onLine) {
+        window.magazzinoCloud.syncNow().catch(error => console.debug('Sincronizzazione iniziale:', error));
+      }
     } catch (error) {
       console.error(error);
       notify('Non è stato possibile aprire l’archivio locale.', 'error');
@@ -148,6 +171,13 @@
     $('#locationForm').addEventListener('submit', saveLocation);
     $('#movementForm').addEventListener('submit', saveMovement);
     $('#settingsForm').addEventListener('submit', saveSettings);
+    $('#cloudForm').addEventListener('submit', saveCloudSettings);
+    $('#testCloudBtn').addEventListener('click', testCloudConnection);
+    $('#syncCloudBtn').addEventListener('click', syncCloudNow);
+    $('#changePinBtn').addEventListener('click', changeAdminPin);
+    $('#lockSettingsBtn').addEventListener('click', lockSettings);
+    $('#pinForm').addEventListener('submit', submitPinChallenge);
+    $('#pinDialog').addEventListener('close', finishCancelledPinChallenge);
 
     const productQrBtn = $('#productQrBtn');
     if (productQrBtn) {
@@ -165,6 +195,14 @@
       });
     }
 
+    $('#detailProductQrBtn').addEventListener('click', detailProductQr);
+    $('#detailProductFindBtn').addEventListener('click', detailProductFind);
+    $('#detailProductMoveBtn').addEventListener('click', detailProductMove);
+    $('#detailProductEditBtn').addEventListener('click', detailProductEdit);
+    $('#detailLocationQrBtn').addEventListener('click', detailLocationQr);
+    $('#detailLocationEditBtn').addEventListener('click', detailLocationEdit);
+    $('#locationDetailContent').addEventListener('click', openProductFromLocationDetail);
+
     $('#downloadQrBtn').addEventListener('click', downloadQrImage);
     $('#shareQrBtn').addEventListener('click', shareQrImage);
     $('#printQrBtn').addEventListener('click', printQrImage);
@@ -174,7 +212,9 @@
     $('#movementProduct').addEventListener('change', syncMovementFields);
 
     $('#productList').addEventListener('click', handleProductAction);
+    $('#productList').addEventListener('keydown', handleProductCardKeydown);
     $('#locationList').addEventListener('click', handleLocationAction);
+    $('#locationList').addEventListener('keydown', handleLocationCardKeydown);
     $('#findResults').addEventListener('click', handleFindSelection);
     $('#findSelected').addEventListener('click', handleFindAction);
 
@@ -222,8 +262,8 @@
       notify('Applicazione installata.', 'success');
     });
 
-    window.addEventListener('online', updateConnectionStatus);
-    window.addEventListener('offline', updateConnectionStatus);
+    window.addEventListener('online', handleConnectionChange);
+    window.addEventListener('offline', handleConnectionChange);
   }
 
   function renderAll() {
@@ -232,11 +272,17 @@
     renderLocations();
     renderMovements();
     renderFindResults();
-    renderSettings();
+    if (state.settingsUnlocked) renderSettings();
     populateSelects();
   }
 
   function switchView(view) {
+    if (view === 'settings' && !state.settingsUnlocked) {
+      requestSettingsAccess();
+      return;
+    }
+    if (state.currentView === 'settings' && view !== 'settings') state.settingsUnlocked = false;
+
     state.currentView = view;
     $$('.view').forEach(section => section.classList.toggle('active', section.id === `view-${view}`));
     $$('.nav-btn, .mobile-nav[data-view]').forEach(button => button.classList.toggle('active', button.dataset.view === view));
@@ -247,6 +293,7 @@
     if (view === 'locations') renderLocations();
     if (view === 'movements') renderMovements();
     if (view === 'find') renderFindResults();
+    if (view === 'settings') renderSettings();
   }
 
   function renderDashboard() {
@@ -312,7 +359,7 @@
       const low = isLowStock(product);
       const expired = product.expiry && new Date(`${product.expiry}T23:59:59`) < new Date();
       return `
-        <article class="product-card">
+        <article class="product-card clickable-card" data-product-open="${product.id}" tabindex="0" role="button" aria-label="Apri scheda ${escapeHtml(product.name)}">
           <div class="product-thumb">${product.imageData ? `<img src="${product.imageData}" alt="Foto ${escapeHtml(product.name)}">` : '▦'}</div>
           <div class="product-main">
             <div class="product-title-row">
@@ -357,7 +404,7 @@
     container.innerHTML = locations.map(location => {
       const count = state.products.filter(product => product.locationId === location.id).length;
       return `
-        <article class="location-card">
+        <article class="location-card clickable-card" data-location-open="${location.id}" tabindex="0" role="button" aria-label="Apri posizione ${escapeHtml(location.code)}">
           <div class="location-card-head">
             <div><h3>${escapeHtml(location.warehouse || 'Magazzino')}</h3><div class="location-code">${escapeHtml(location.code)}</div></div>
             <button class="mini-btn" data-location-action="print" data-id="${location.id}" title="Stampa QR">▦</button>
@@ -478,6 +525,174 @@
   function renderSettings() {
     $('#settingCompany').value = state.settings.company || '';
     $('#settingOperator').value = state.settings.operator || 'Operatore';
+    const cloud = window.magazzinoCloud?.getConfig?.() || { apiUrl: '', warehouseId: '', accessKey: '' };
+    $('#cloudApiUrl').value = cloud.apiUrl || '';
+    $('#cloudWarehouseId').value = cloud.warehouseId || '';
+    $('#cloudAccessKey').value = cloud.accessKey || '';
+    updateCloudStatus(state.cloudStatus);
+  }
+
+  async function ensureDefaultPin() {
+    if (!localStorage.getItem(ADMIN_PIN_HASH_KEY)) {
+      localStorage.setItem(ADMIN_PIN_HASH_KEY, await hashPin(DEFAULT_ADMIN_PIN));
+    }
+  }
+
+  async function hashPin(pin) {
+    const value = String(pin || '');
+    if (globalThis.crypto?.subtle) {
+      const data = new TextEncoder().encode(value);
+      const digest = await crypto.subtle.digest('SHA-256', data);
+      return [...new Uint8Array(digest)].map(item => item.toString(16).padStart(2, '0')).join('');
+    }
+    let hash = 2166136261;
+    for (let index = 0; index < value.length; index += 1) {
+      hash ^= value.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+    return `fallback-${(hash >>> 0).toString(16)}`;
+  }
+
+  function requestSettingsAccess() {
+    requireAdminPin('Inserisci il PIN per accedere alle impostazioni.').then(authorized => {
+      if (!authorized) return;
+      state.settingsUnlocked = true;
+      switchView('settings');
+    });
+  }
+
+  function requireAdminPin(message = 'Inserisci il PIN amministratore.') {
+    if (state.pinResolver) return Promise.resolve(false);
+    $('#pinMessage').textContent = message;
+    $('#pinInput').value = '';
+    $('#pinDialog').showModal();
+    setTimeout(() => $('#pinInput').focus(), 80);
+    return new Promise(resolve => {
+      state.pinResolver = resolve;
+      state.pinPurpose = message;
+    });
+  }
+
+  async function submitPinChallenge(event) {
+    event.preventDefault();
+    const entered = $('#pinInput').value;
+    const expected = localStorage.getItem(ADMIN_PIN_HASH_KEY) || await hashPin(DEFAULT_ADMIN_PIN);
+    const valid = entered.length >= 4 && await hashPin(entered) === expected;
+    if (!valid) {
+      notify('PIN non corretto.', 'error');
+      $('#pinInput').select();
+      return;
+    }
+    const resolver = state.pinResolver;
+    state.pinResolver = null;
+    state.pinPurpose = '';
+    $('#pinDialog').close();
+    resolver?.(true);
+  }
+
+  function finishCancelledPinChallenge() {
+    if (!state.pinResolver) return;
+    const resolver = state.pinResolver;
+    state.pinResolver = null;
+    state.pinPurpose = '';
+    resolver(false);
+  }
+
+  async function changeAdminPin() {
+    const first = $('#newPin').value.trim();
+    const second = $('#confirmNewPin').value.trim();
+    if (!/^\d{4,12}$/.test(first)) {
+      notify('Il PIN deve contenere da 4 a 12 cifre.', 'error');
+      return;
+    }
+    if (first !== second) {
+      notify('I due PIN non coincidono.', 'error');
+      return;
+    }
+    localStorage.setItem(ADMIN_PIN_HASH_KEY, await hashPin(first));
+    $('#newPin').value = '';
+    $('#confirmNewPin').value = '';
+    notify('PIN modificato correttamente.', 'success');
+  }
+
+  function lockSettings() {
+    state.settingsUnlocked = false;
+    if (state.currentView === 'settings') switchView('dashboard');
+    notify('Impostazioni bloccate.', 'success');
+  }
+
+  function updateCloudStatus(info = {}) {
+    state.cloudStatus = {
+      status: info.status || state.cloudStatus.status || 'disabled',
+      message: info.message || '',
+      configured: info.configured ?? window.magazzinoCloud?.isConfigured?.() ?? false,
+      pending: Number(info.pending ?? window.magazzinoCloud?.getQueue?.().length ?? 0)
+    };
+    const badge = $('#cloudStatusBadge');
+    const text = $('#cloudStatusText');
+    const labels = {
+      disabled: 'Non configurato',
+      pending: 'Da sincronizzare',
+      syncing: 'Sincronizzazione…',
+      online: 'Cloud attivo',
+      offline: 'Offline',
+      error: 'Errore cloud',
+      idle: 'Configurato'
+    };
+    if (badge) {
+      badge.className = `cloud-status ${state.cloudStatus.status}`;
+      badge.textContent = labels[state.cloudStatus.status] || 'Cloudflare';
+    }
+    if (text) {
+      const pending = state.cloudStatus.pending ? ` · ${state.cloudStatus.pending} modifiche in attesa` : '';
+      text.textContent = (state.cloudStatus.message || (state.cloudStatus.configured ? 'Sincronizzazione Cloudflare configurata.' : 'Inserisci i dati del Worker Cloudflare.')) + pending;
+    }
+    updateConnectionStatus();
+  }
+
+  async function saveCloudSettings(event) {
+    event.preventDefault();
+    const config = window.magazzinoCloud.saveConfig({
+      apiUrl: $('#cloudApiUrl').value,
+      warehouseId: $('#cloudWarehouseId').value,
+      accessKey: $('#cloudAccessKey').value
+    });
+    if (!config.apiUrl || !config.warehouseId || !config.accessKey) {
+      notify('Compila indirizzo API, codice magazzino e chiave di accesso.', 'error');
+      return;
+    }
+    try {
+      await window.magazzinoCloud.testConnection();
+      await window.magazzinoCloud.syncNow();
+      notify('Cloudflare collegato e archivio sincronizzato.', 'success');
+    } catch (error) {
+      notify(error.message || 'Collegamento Cloudflare non riuscito.', 'error');
+    }
+  }
+
+  async function testCloudConnection() {
+    window.magazzinoCloud.saveConfig({
+      apiUrl: $('#cloudApiUrl').value,
+      warehouseId: $('#cloudWarehouseId').value,
+      accessKey: $('#cloudAccessKey').value
+    });
+    try {
+      const result = await window.magazzinoCloud.testConnection();
+      notify(`Cloudflare raggiungibile. Record presenti: ${result.records || 0}.`, 'success');
+    } catch (error) {
+      notify(error.message || 'Verifica Cloudflare non riuscita.', 'error');
+    }
+  }
+
+  async function syncCloudNow() {
+    try {
+      await window.magazzinoCloud.syncNow();
+      await loadState();
+      renderAll();
+      notify('Sincronizzazione completata.', 'success');
+    } catch (error) {
+      notify(error.message || 'Sincronizzazione non riuscita.', 'error');
+    }
   }
 
   function renderCompatibility() {
@@ -486,7 +701,8 @@
       ['Archivio offline', 'indexedDB' in window],
       ['Installazione PWA', 'serviceWorker' in navigator],
       ['Lettura barcode nativa', 'BarcodeDetector' in window],
-      ['Generatore QR locale v5.2', Boolean(window.QRCode?.toCanvas)],
+      ['Generatore QR locale v6', Boolean(window.QRCode?.toCanvas)],
+      ['Sincronizzazione Cloudflare', Boolean(window.magazzinoCloud)],
       ['Guida AR con fotocamera', Boolean(navigator.mediaDevices?.getUserMedia)],
       ['WebXR avanzato', 'xr' in navigator]
     ];
@@ -639,7 +855,7 @@
     const file = event.target.files?.[0];
     if (!file) return;
     try {
-      state.currentImageData = await resizeImage(file, 1100, .78);
+      state.currentImageData = await resizeImage(file, 800, .68);
       updateImagePreview();
     } catch (error) {
       console.error(error);
@@ -822,7 +1038,12 @@
 
   async function handleProductAction(event) {
     const button = event.target.closest('[data-product-action]');
-    if (!button) return;
+    if (!button) {
+      const card = event.target.closest('[data-product-open]');
+      if (card) openProductDetail(card.dataset.productOpen);
+      return;
+    }
+    event.stopPropagation();
     const product = getProduct(button.dataset.id);
     if (!product) return;
 
@@ -835,6 +1056,8 @@
       renderFindResults();
     }
     if (button.dataset.productAction === 'delete') {
+      const authorized = await requireAdminPin('Inserisci il PIN per eliminare questo prodotto.');
+      if (!authorized) return;
       const confirmed = await askConfirmation('Elimina prodotto', `Vuoi eliminare “${product.name}”? Lo storico dei movimenti resterà disponibile.`);
       if (!confirmed) return;
       await warehouseDB.delete('products', product.id);
@@ -844,9 +1067,22 @@
     }
   }
 
+  function handleProductCardKeydown(event) {
+    if (!['Enter', ' '].includes(event.key) || event.target.closest('button')) return;
+    const card = event.target.closest('[data-product-open]');
+    if (!card) return;
+    event.preventDefault();
+    openProductDetail(card.dataset.productOpen);
+  }
+
   async function handleLocationAction(event) {
     const button = event.target.closest('[data-location-action]');
-    if (!button) return;
+    if (!button) {
+      const card = event.target.closest('[data-location-open]');
+      if (card) openLocationDetail(card.dataset.locationOpen);
+      return;
+    }
+    event.stopPropagation();
     const location = getLocation(button.dataset.id);
     if (!location) return;
 
@@ -858,6 +1094,8 @@
         notify(`Non puoi eliminare la posizione: contiene ${count} prodott${count === 1 ? 'o' : 'i'}.`, 'error');
         return;
       }
+      const authorized = await requireAdminPin('Inserisci il PIN per eliminare questa posizione.');
+      if (!authorized) return;
       const confirmed = await askConfirmation('Elimina posizione', `Vuoi eliminare la posizione ${location.code}?`);
       if (!confirmed) return;
       await warehouseDB.delete('locations', location.id);
@@ -865,6 +1103,121 @@
       renderAll();
       notify('Posizione eliminata.', 'success');
     }
+  }
+
+  function handleLocationCardKeydown(event) {
+    if (!['Enter', ' '].includes(event.key) || event.target.closest('button')) return;
+    const card = event.target.closest('[data-location-open]');
+    if (!card) return;
+    event.preventDefault();
+    openLocationDetail(card.dataset.locationOpen);
+  }
+
+  function openProductDetail(productId) {
+    const product = getProduct(productId);
+    if (!product) return;
+    const location = getLocation(product.locationId);
+    state.currentDetailProductId = product.id;
+    $('#productDetailTitle').textContent = product.name;
+    $('#productDetailContent').innerHTML = `
+      <div class="detail-layout">
+        <div class="detail-photo">${product.imageData ? `<img src="${product.imageData}" alt="Foto ${escapeHtml(product.name)}">` : '▦'}</div>
+        <div class="detail-grid">
+          ${detailField('Nome prodotto', product.name, true)}
+          ${detailField('Quantità', `${formatNumber(product.quantity)} ${product.unit || 'pz'}`)}
+          ${detailField('Categoria', product.category || '—')}
+          ${detailField('Barcode', product.barcode || 'QR interno')}
+          ${detailField('Codice interno / SKU', product.sku || '—')}
+          ${detailField('Lotto', product.lot || '—')}
+          ${detailField('Scadenza', product.expiry ? formatDate(product.expiry) : '—')}
+          ${detailField('Scorta minima', `${formatNumber(product.minStock)} ${product.unit || 'pz'}`)}
+          ${detailField('Posizione', location ? locationPath(location) : 'Non assegnata', true)}
+          ${detailField('Descrizione', product.description || 'Nessuna descrizione', true)}
+          ${detailField('Ultimo aggiornamento', formatDateTime(product.updatedAt || product.createdAt), true)}
+        </div>
+      </div>`;
+    $('#detailProductFindBtn').disabled = !location;
+    $('#productDetailDialog').showModal();
+  }
+
+  function openLocationDetail(locationId) {
+    const location = getLocation(locationId);
+    if (!location) return;
+    const products = state.products.filter(product => product.locationId === location.id);
+    state.currentDetailLocationId = location.id;
+    $('#locationDetailTitle').textContent = location.code;
+    $('#locationDetailContent').innerHTML = `
+      <div class="detail-grid">
+        ${detailField('Codice posizione', location.code, true)}
+        ${detailField('Magazzino', location.warehouse || '—')}
+        ${detailField('Zona', location.zone || '—')}
+        ${detailField('Corsia', location.aisle || '—')}
+        ${detailField('Scaffale', location.rack || '—')}
+        ${detailField('Ripiano', location.shelf || '—')}
+        ${detailField('Posto', location.bin || '—')}
+        ${detailField('Prodotti presenti', String(products.length))}
+        ${detailField('Indicazioni', location.note || 'Nessuna indicazione', true)}
+      </div>
+      <div class="location-products">
+        <h3>Prodotti in questa posizione</h3>
+        ${products.length ? products.map(product => `
+          <button class="location-product-link" data-detail-product="${product.id}" type="button">
+            <span><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(product.barcode || 'QR interno')}</small></span>
+            <b>${formatNumber(product.quantity)} ${escapeHtml(product.unit || 'pz')}</b>
+          </button>`).join('') : '<div class="empty-state">Nessun prodotto assegnato a questa posizione.</div>'}
+      </div>`;
+    $('#locationDetailDialog').showModal();
+  }
+
+  function detailField(label, value, full = false) {
+    return `<div class="detail-field ${full ? 'full' : ''}"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value ?? '—'))}</strong></div>`;
+  }
+
+  function detailProductQr() {
+    const product = getProduct(state.currentDetailProductId);
+    if (product) printProductLabel(product);
+  }
+
+  function detailProductFind() {
+    const product = getProduct(state.currentDetailProductId);
+    if (!product) return;
+    closeDialog('productDetailDialog');
+    state.selectedFindId = product.id;
+    switchView('find');
+    renderFindResults();
+  }
+
+  function detailProductMove() {
+    const product = getProduct(state.currentDetailProductId);
+    if (!product) return;
+    closeDialog('productDetailDialog');
+    openMovementForm(product.id, 'MOVE');
+  }
+
+  function detailProductEdit() {
+    const product = getProduct(state.currentDetailProductId);
+    if (!product) return;
+    closeDialog('productDetailDialog');
+    openProductForm(product);
+  }
+
+  function detailLocationQr() {
+    const location = getLocation(state.currentDetailLocationId);
+    if (location) printLocationLabel(location);
+  }
+
+  function detailLocationEdit() {
+    const location = getLocation(state.currentDetailLocationId);
+    if (!location) return;
+    closeDialog('locationDetailDialog');
+    openLocationForm(location);
+  }
+
+  function openProductFromLocationDetail(event) {
+    const button = event.target.closest('[data-detail-product]');
+    if (!button) return;
+    closeDialog('locationDetailDialog');
+    openProductDetail(button.dataset.detailProduct);
   }
 
   function handleFindSelection(event) {
@@ -1155,6 +1508,8 @@
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
+    const authorized = await requireAdminPin('Inserisci il PIN per sostituire l’archivio con un backup.');
+    if (!authorized) return;
     const confirmed = await askConfirmation('Importa backup', 'L’archivio attuale verrà sostituito dai dati del file selezionato.');
     if (!confirmed) return;
 
@@ -1199,7 +1554,9 @@
   }
 
   async function resetAllData() {
-    const confirmed = await askConfirmation('Cancella tutto', 'Questa operazione elimina prodotti, posizioni, movimenti e impostazioni dal dispositivo.');
+    const authorized = await requireAdminPin('Inserisci il PIN per cancellare tutti i dati locali e Cloudflare.');
+    if (!authorized) return;
+    const confirmed = await askConfirmation('Cancella tutto', 'Questa operazione elimina prodotti, posizioni, movimenti e impostazioni anche dal cloud configurato.');
     if (!confirmed) return;
     await warehouseDB.clearAll();
     await loadState();
@@ -1428,14 +1785,38 @@
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=5.2.0', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=6.0.0', { updateViaCache: 'none' })
         .then(registration => registration.update())
         .catch(error => console.debug('Service worker:', error));
     });
   }
 
   function updateConnectionStatus() {
-    $('#connectionStatus').textContent = navigator.onLine ? 'Archivio locale · online' : 'Archivio locale · offline';
+    const label = $('#connectionStatus');
+    if (!label) return;
+    const cloudConfigured = window.magazzinoCloud?.isConfigured?.();
+    if (!navigator.onLine) {
+      label.textContent = cloudConfigured ? 'Offline · salvataggio locale attivo' : 'Archivio locale · offline';
+      return;
+    }
+    if (cloudConfigured) {
+      const status = state.cloudStatus.status;
+      label.textContent = status === 'syncing' ? 'Cloudflare · sincronizzazione…'
+        : status === 'error' ? 'Cloudflare · errore sincronizzazione'
+        : state.cloudStatus.pending ? `Cloudflare · ${state.cloudStatus.pending} in attesa`
+        : 'Cloudflare · dati sincronizzati';
+      return;
+    }
+    label.textContent = 'Archivio locale · online';
+  }
+
+  function handleConnectionChange() {
+    updateConnectionStatus();
+    if (navigator.onLine && window.magazzinoCloud?.isConfigured?.()) {
+      window.magazzinoCloud.syncNow().catch(error => console.debug('Sincronizzazione al ritorno online:', error));
+    } else if (!navigator.onLine) {
+      updateCloudStatus({ status: 'offline', message: 'Connessione assente: le modifiche restano sul dispositivo.', configured: window.magazzinoCloud?.isConfigured?.(), pending: window.magazzinoCloud?.getQueue?.().length || 0 });
+    }
   }
 
   function getProduct(id) {

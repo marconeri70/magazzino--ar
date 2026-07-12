@@ -1,12 +1,13 @@
 'use strict';
 
-const CACHE_NAME = 'magazzino-ar-v5-2-qr-preview';
-const VERSION = '5.2.0';
+const CACHE_NAME = 'magazzino-ar-v6-cloud-pin';
+const VERSION = '6.0.0';
 const APP_SHELL = [
   './',
   './index.html',
   `./styles.css?v=${VERSION}`,
   `./db.js?v=${VERSION}`,
+  `./cloud.js?v=${VERSION}`,
   `./app.js?v=${VERSION}`,
   `./qrcode-local.js?v=${VERSION}`,
   './manifest.webmanifest',
@@ -35,6 +36,7 @@ self.addEventListener('fetch', event => {
 
   const url = new URL(event.request.url);
   const sameOrigin = url.origin === self.location.origin;
+  if (!sameOrigin && event.request.headers.has('Authorization')) return;
   const isNavigation = event.request.mode === 'navigate';
   const isCoreAsset = sameOrigin && /\.(?:html|css|js|webmanifest)$/i.test(url.pathname);
 
