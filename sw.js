@@ -1,7 +1,7 @@
 'use strict';
 
-const CACHE_NAME = 'magazzino-ar-v5-1-stable';
-const VERSION = '5.1.0';
+const CACHE_NAME = 'magazzino-ar-v5-2-qr-preview';
+const VERSION = '5.2.0';
 const APP_SHELL = [
   './',
   './index.html',

@@ -23,7 +23,8 @@
     selectedFindId: null,
     arStream: null,
     arProductId: null,
-    deferredPrompt: null
+    deferredPrompt: null,
+    qrPreview: { dataUrl: '', filename: '', title: '' }
   };
 
   const movementLabels = {
@@ -163,6 +164,10 @@
         if (location) printLocationLabel(location);
       });
     }
+
+    $('#downloadQrBtn').addEventListener('click', downloadQrImage);
+    $('#shareQrBtn').addEventListener('click', shareQrImage);
+    $('#printQrBtn').addEventListener('click', printQrImage);
 
     $('#productImage').addEventListener('change', handleProductImage);
     $('#movementType').addEventListener('change', syncMovementFields);
@@ -481,6 +486,7 @@
       ['Archivio offline', 'indexedDB' in window],
       ['Installazione PWA', 'serviceWorker' in navigator],
       ['Lettura barcode nativa', 'BarcodeDetector' in window],
+      ['Generatore QR locale v5.2', Boolean(window.QRCode?.toCanvas)],
       ['Guida AR con fotocamera', Boolean(navigator.mediaDevices?.getUserMedia)],
       ['WebXR avanzato', 'xr' in navigator]
     ];
@@ -879,96 +885,244 @@
   }
 
   async function printLocationLabel(location) {
-    const label = document.createElement('div');
-    label.className = 'print-label print-location-label';
-    const qrBox = document.createElement('div');
-    qrBox.className = 'print-qr';
-    const text = document.createElement('div');
-    text.className = 'print-copy';
-    text.innerHTML = `<div class="print-kicker">POSIZIONE DI MAGAZZINO</div><h1>${escapeHtml(location.code)}</h1><p><strong>${escapeHtml(location.warehouse || '')}</strong></p><p>${escapeHtml(locationPath(location))}</p><p>${escapeHtml(location.note || '')}</p>`;
-    label.append(qrBox, text);
-    document.body.appendChild(label);
-
     try {
-      await createQrCode(qrBox, `MAGAR:LOC:${location.code}`, 420);
-      await waitForPrintAssets();
-      window.print();
+      const lines = [
+        location.warehouse || '',
+        locationPath(location),
+        location.note || ''
+      ].filter(Boolean);
+
+      await openQrPreview({
+        qrText: `MAGAR:LOC:${location.code}`,
+        kicker: 'POSIZIONE DI MAGAZZINO',
+        title: location.code,
+        lines,
+        filename: `posizione-${safeFilename(location.code)}.png`,
+        description: `QR della posizione ${location.code}. Puoi scaricarlo, condividerlo con iBleem oppure stamparlo.`
+      });
     } catch (error) {
-      console.error(error);
-      notify('Impossibile creare il QR della posizione.', 'error');
-    } finally {
-      setTimeout(() => label.remove(), 700);
+      console.error('QR posizione:', error);
+      notify(`Errore QR posizione: ${error.message || 'generazione non riuscita'}`, 'error');
     }
   }
 
   async function printProductLabel(product) {
-    const location = getLocation(product.locationId);
+    try {
+      const location = getLocation(product.locationId);
+      const lines = [
+        product.sku ? `Codice interno: ${product.sku}` : '',
+        product.barcode ? `Barcode: ${product.barcode}` : 'Prodotto senza barcode: usa questo QR interno',
+        product.lot ? `Lotto: ${product.lot}` : '',
+        product.expiry ? `Scadenza: ${formatDate(product.expiry)}` : '',
+        `Posizione: ${location ? locationPath(location) : 'Non assegnata'}`
+      ].filter(Boolean);
+
+      await openQrPreview({
+        qrText: `MAGAR:PROD:${product.id}`,
+        kicker: 'ETICHETTA PRODOTTO',
+        title: product.name,
+        lines,
+        filename: `prodotto-${safeFilename(product.name || product.id)}.png`,
+        description: `QR interno del prodotto “${product.name}”. Resta valido anche se cambi quantità o posizione.`
+      });
+    } catch (error) {
+      console.error('QR prodotto:', error);
+      notify(`Errore QR prodotto: ${error.message || 'generazione non riuscita'}`, 'error');
+    }
+  }
+
+  async function openQrPreview(options) {
+    const qrCanvas = await createQrCanvas(options.qrText, 560);
+    const labelCanvas = buildLabelCanvas(qrCanvas, options);
+    const dataUrl = labelCanvas.toDataURL('image/png');
+
+    state.qrPreview = {
+      dataUrl,
+      filename: options.filename || 'magazzino-ar-qr.png',
+      title: options.title || 'QR'
+    };
+
+    $('#qrPreviewTitle').textContent = options.title || 'QR';
+    $('#qrPreviewDescription').textContent = options.description || 'Etichetta QR pronta.';
+    $('#qrPreviewImage').src = dataUrl;
+
+    const dialog = $('#qrPreviewDialog');
+    if (dialog.open) dialog.close();
+    dialog.showModal();
+  }
+
+  async function createQrCanvas(text, size = 560) {
+    if (!window.QRCode || typeof window.QRCode.toCanvas !== 'function') {
+      throw new Error('il generatore QR locale non è stato caricato');
+    }
+
+    const canvas = document.createElement('canvas');
+    await window.QRCode.toCanvas(canvas, text, {
+      width: size,
+      margin: 3,
+      errorCorrectionLevel: 'M',
+      colorDark: '#000000',
+      colorLight: '#ffffff'
+    });
+    return canvas;
+  }
+
+  function buildLabelCanvas(qrCanvas, options) {
+    const width = 700;
+    const height = 980;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('canvas non supportato dal dispositivo');
+
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    context.strokeStyle = '#000000';
+    context.lineWidth = 5;
+    context.strokeRect(3, 3, width - 6, height - 6);
+
+    const qrSize = 540;
+    const qrX = Math.round((width - qrSize) / 2);
+    const qrY = 28;
+    context.imageSmoothingEnabled = false;
+    context.drawImage(qrCanvas, qrX, qrY, qrSize, qrSize);
+
+    let y = qrY + qrSize + 36;
+    context.fillStyle = '#000000';
+    context.textAlign = 'center';
+    context.textBaseline = 'top';
+    context.font = '700 24px Arial, sans-serif';
+    context.fillText(String(options.kicker || 'MAGAZZINO AR'), width / 2, y);
+    y += 42;
+
+    context.font = '700 42px Arial, sans-serif';
+    y = drawWrappedCanvasText(context, String(options.title || 'QR'), width / 2, y, width - 70, 50, 2);
+    y += 12;
+
+    context.font = '28px Arial, sans-serif';
+    for (const line of options.lines || []) {
+      if (y > height - 92) break;
+      y = drawWrappedCanvasText(context, String(line), width / 2, y, width - 70, 36, 2);
+      y += 5;
+    }
+
+    context.font = '700 20px Arial, sans-serif';
+    context.fillText('SCANSIONA CON MAGAZZINO AR', width / 2, height - 52);
+    return canvas;
+  }
+
+  function drawWrappedCanvasText(context, text, x, y, maxWidth, lineHeight, maxLines) {
+    const words = String(text || '').split(/\s+/).filter(Boolean);
+    const lines = [];
+    let line = '';
+
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (context.measureText(test).width <= maxWidth || !line) {
+        line = test;
+      } else {
+        lines.push(line);
+        line = word;
+      }
+    }
+    if (line) lines.push(line);
+
+    const visible = lines.slice(0, maxLines);
+    if (lines.length > maxLines && visible.length) {
+      let last = visible[visible.length - 1];
+      while (last.length > 1 && context.measureText(`${last}…`).width > maxWidth) last = last.slice(0, -1);
+      visible[visible.length - 1] = `${last}…`;
+    }
+
+    for (const item of visible) {
+      context.fillText(item, x, y);
+      y += lineHeight;
+    }
+    return y;
+  }
+
+  function downloadQrImage() {
+    const { dataUrl, filename } = state.qrPreview;
+    if (!dataUrl) {
+      notify('Nessuna etichetta QR disponibile.', 'error');
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = filename || 'magazzino-ar-qr.png';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    notify('Etichetta QR scaricata.', 'success');
+  }
+
+  async function shareQrImage() {
+    const { dataUrl, filename, title } = state.qrPreview;
+    if (!dataUrl) {
+      notify('Nessuna etichetta QR disponibile.', 'error');
+      return;
+    }
+
+    try {
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      const file = new File([blob], filename || 'magazzino-ar-qr.png', { type: 'image/png' });
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+        await navigator.share({ title: title || 'QR Magazzino AR', files: [file] });
+        return;
+      }
+      downloadQrImage();
+      notify('Condivisione non disponibile: il PNG è stato scaricato.', 'success');
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+      console.error(error);
+      downloadQrImage();
+    }
+  }
+
+  async function printQrImage() {
+    const { dataUrl } = state.qrPreview;
+    if (!dataUrl) {
+      notify('Nessuna etichetta QR disponibile.', 'error');
+      return;
+    }
+    if (typeof window.print !== 'function') {
+      notify('La stampa diretta non è disponibile: usa “Scarica PNG” e aprilo in iBleem.', 'error');
+      return;
+    }
+
     const label = document.createElement('div');
-    label.className = 'print-label print-product-label';
-
-    const qrBox = document.createElement('div');
-    qrBox.className = 'print-qr';
-
-    const text = document.createElement('div');
-    text.className = 'print-copy';
-    const details = [
-      product.sku ? `Codice interno: ${escapeHtml(product.sku)}` : '',
-      product.barcode ? `Barcode: ${escapeHtml(product.barcode)}` : 'Identificazione: QR interno',
-      product.lot ? `Lotto: ${escapeHtml(product.lot)}` : '',
-      product.expiry ? `Scadenza: ${escapeHtml(formatDate(product.expiry))}` : ''
-    ].filter(Boolean).map(value => `<p>${value}</p>`).join('');
-
-    text.innerHTML = `
-      <div class="print-kicker">ETICHETTA PRODOTTO</div>
-      <h1>${escapeHtml(product.name)}</h1>
-      ${details}
-      <p class="print-location"><strong>Posizione attuale:</strong><br>${escapeHtml(location ? locationPath(location) : 'Non assegnata')}</p>
-      <p class="print-hint">Scansiona il QR nell’app per vedere la posizione aggiornata.</p>`;
-
-    label.append(qrBox, text);
+    label.className = 'print-label print-image-label';
+    const image = document.createElement('img');
+    image.src = dataUrl;
+    image.alt = 'Etichetta QR da stampare';
+    label.appendChild(image);
     document.body.appendChild(label);
 
     try {
-      await createQrCode(qrBox, `MAGAR:PROD:${product.id}`, 420);
       await waitForPrintAssets();
       window.print();
     } catch (error) {
       console.error(error);
-      notify('Impossibile creare il QR del prodotto.', 'error');
+      notify('Stampa diretta non disponibile: scarica il PNG e stampalo con iBleem.', 'error');
     } finally {
-      setTimeout(() => label.remove(), 700);
+      setTimeout(() => label.remove(), 1200);
     }
   }
 
-  async function createQrCode(container, text, size = 420) {
-    if (!window.QRCode) throw new Error('Generatore QR non disponibile');
-
-    if (typeof window.QRCode.toCanvas === 'function') {
-      const canvas = document.createElement('canvas');
-      container.appendChild(canvas);
-      await window.QRCode.toCanvas(canvas, text, {
-        width: size,
-        margin: 1,
-        errorCorrectionLevel: 'M'
-      });
-      return;
-    }
-
-    if (typeof window.QRCode === 'function') {
-      new window.QRCode(container, {
-        text,
-        width: size,
-        height: size,
-        correctLevel: window.QRCode.CorrectLevel?.M
-      });
-      return;
-    }
-
-    throw new Error('Formato libreria QR non riconosciuto');
+  function safeFilename(value) {
+    const result = String(value || 'qr')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9_-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 70);
+    return result || 'qr';
   }
 
   function waitForPrintAssets() {
-    return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 180)));
+    return new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve, 220)));
   }
 
   async function saveSettings(event) {
@@ -1274,7 +1428,9 @@
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js').catch(error => console.debug('Service worker:', error));
+      navigator.serviceWorker.register('./sw.js?v=5.2.0', { updateViaCache: 'none' })
+        .then(registration => registration.update())
+        .catch(error => console.debug('Service worker:', error));
     });
   }
 

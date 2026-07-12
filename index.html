@@ -9,11 +9,11 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=5.1.0">
+  <link rel="stylesheet" href="styles.css?v=5.2.0">
   <script defer src="https://unpkg.com/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
-  <script defer src="db.js?v=5.1.0"></script>
-  <script defer src="app.js?v=5.1.0"></script>
+  <script defer src="qrcode-local.js?v=5.2.0"></script>
+  <script defer src="db.js?v=5.2.0"></script>
+  <script defer src="app.js?v=5.2.0"></script>
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -282,6 +282,25 @@
         <button id="saveLocationQrBtn" class="btn btn-secondary" type="submit" data-after-save="qr">Salva e crea QR</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="qrPreviewDialog" class="modal small-modal">
+    <div class="modal-card qr-preview-card">
+      <div class="modal-heading">
+        <div><p class="eyebrow">Etichetta pronta</p><h2 id="qrPreviewTitle">QR</h2></div>
+        <button class="icon-btn" data-close-dialog="qrPreviewDialog" aria-label="Chiudi" type="button">×</button>
+      </div>
+      <div class="qr-preview-wrap">
+        <img id="qrPreviewImage" alt="Anteprima dell'etichetta QR">
+      </div>
+      <p id="qrPreviewDescription" class="qr-preview-description"></p>
+      <div class="modal-actions qr-preview-actions">
+        <button class="btn btn-ghost" data-close-dialog="qrPreviewDialog" type="button">Chiudi</button>
+        <button id="downloadQrBtn" class="btn btn-secondary" type="button">⬇ Scarica PNG</button>
+        <button id="shareQrBtn" class="btn btn-secondary" type="button">↗ Condividi</button>
+        <button id="printQrBtn" class="btn btn-primary" type="button">🖨 Stampa</button>
+      </div>
+    </div>
   </dialog>
 
   <dialog id="movementDialog" class="modal">

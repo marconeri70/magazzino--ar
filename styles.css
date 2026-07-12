@@ -371,3 +371,43 @@ tbody tr:last-child td { border-bottom: 0; }
   .print-location { margin-top: 1.6mm !important; padding-top: 1.2mm; border-top: .25mm solid #777; }
   .print-hint { font-size: 7.5pt !important; font-style: italic; }
 }
+
+
+/* QR preview v5.2 */
+.qr-preview-card { width: min(96vw, 560px); }
+.qr-preview-wrap {
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: #f2f5f8;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.qr-preview-wrap img {
+  display: block;
+  width: min(100%, 420px);
+  max-height: 62vh;
+  object-fit: contain;
+  background: #fff;
+}
+.qr-preview-description { margin: 0; color: var(--muted); line-height: 1.45; }
+.qr-preview-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+@media print {
+  .print-image-label {
+    display: grid !important;
+    place-items: center;
+    grid-template-columns: 1fr;
+    width: 58mm;
+    height: auto;
+    min-height: 58mm;
+    padding: 2mm;
+    border: 0;
+  }
+  .print-image-label img {
+    width: 54mm !important;
+    height: auto !important;
+    max-width: 54mm !important;
+    max-height: none !important;
+  }
+}
