@@ -1,7 +1,7 @@
 'use strict';
 
-const CACHE_NAME = 'magazzino-ar-v6-1-cloud-simple';
-const VERSION = '6.1.0';
+const CACHE_NAME = 'magazzino-ar-v6-2-location-model';
+const VERSION = '6.2.0';
 const APP_SHELL = [
   './',
   './index.html',

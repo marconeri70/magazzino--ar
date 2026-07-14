@@ -127,7 +127,7 @@
     });
 
     $('#scanLocationSearchBtn').addEventListener('click', () => {
-      openScanner('Leggi QR posizione', raw => {
+      openScanner('Leggi QR area', raw => {
         $('#locationSearch').value = parseLocationCode(raw);
         switchView('locations');
         renderLocations();
@@ -144,6 +144,19 @@
       });
     });
 
+    $('#scanProductLocationBtn').addEventListener('click', () => {
+      openScanner('Scansiona il QR dell’area di stoccaggio', raw => {
+        const location = getLocationByCode(parseLocationCode(raw));
+        if (!location) {
+          notify('Area non registrata. Creala prima nella sezione Posizioni.', 'error');
+          return;
+        }
+        $('#productLocation').value = location.id;
+        syncProductLocationFields();
+        notify(`Area selezionata: ${locationDisplayName(location)}`, 'success');
+      });
+    });
+
     $('#scanMovementProductBtn').addEventListener('click', () => {
       openScanner('Prodotto da movimentare', raw => {
         const product = resolveScannedProduct(raw);
@@ -157,13 +170,15 @@
     });
 
     $('#scanMovementLocationBtn').addEventListener('click', () => {
-      openScanner('Nuova posizione', raw => {
+      openScanner('Nuova area di stoccaggio', raw => {
         const location = getLocationByCode(parseLocationCode(raw));
         if (!location) {
-          notify('Posizione non registrata.', 'error');
+          notify('Area non registrata.', 'error');
           return;
         }
         $('#movementDestination').value = location.id;
+        syncMovementDestinationFields(true);
+        notify(`Area selezionata: ${locationDisplayName(location)}`, 'success');
       });
     });
 
@@ -208,8 +223,10 @@
     $('#printQrBtn').addEventListener('click', printQrImage);
 
     $('#productImage').addEventListener('change', handleProductImage);
+    $('#productLocation').addEventListener('change', syncProductLocationFields);
     $('#movementType').addEventListener('change', syncMovementFields);
     $('#movementProduct').addEventListener('change', syncMovementFields);
+    $('#movementDestination').addEventListener('change', () => syncMovementDestinationFields(true));
 
     $('#productList').addEventListener('click', handleProductAction);
     $('#productList').addEventListener('keydown', handleProductCardKeydown);
@@ -335,7 +352,7 @@
       const location = getLocation(product.locationId);
       const haystack = normalizeText([
         product.name, product.barcode, product.sku, product.category, product.lot, product.id,
-        location?.code, locationPath(location)
+        location?.code, baseLocationPath(location), productLocationPath(product)
       ].join(' '));
       if (query && !haystack.includes(query)) return false;
       if (filter === 'low' && !isLowStock(product)) return false;
@@ -372,7 +389,7 @@
               ${product.barcode ? `<span class="chip">Barcode ${escapeHtml(product.barcode)}</span>` : '<span class="chip">QR interno</span>'}
               ${product.lot ? `<span class="chip">Lotto ${escapeHtml(product.lot)}</span>` : ''}
               ${product.expiry ? `<span class="chip">Scad. ${formatDate(product.expiry)}</span>` : ''}
-              <span class="chip">⌖ ${escapeHtml(location ? locationPath(location) : 'Senza posizione')}</span>
+              <span class="chip">⌖ ${escapeHtml(location ? productLocationPath(product) : 'Senza posizione')}</span>
             </div>
           </div>
           <div class="product-side">
@@ -392,34 +409,45 @@
   function renderLocations() {
     const query = normalizeText($('#locationSearch')?.value || '');
     const locations = state.locations.filter(location => {
-      return normalizeText([location.code, location.warehouse, location.zone, location.aisle, location.rack, location.shelf, location.bin, location.note].join(' ')).includes(query);
+      return normalizeText([
+        location.code,
+        locationDisplayName(location),
+        locationType(location),
+        location.zone,
+        location.note,
+        location.warehouse,
+        location.aisle,
+        location.rack,
+        location.shelf,
+        location.bin
+      ].join(' ')).includes(query);
     });
 
     const container = $('#locationList');
     if (!locations.length) {
-      container.innerHTML = emptyBlock('Nessuna posizione trovata', 'Crea il primo scaffale o modifica la ricerca.', '⌖');
+      container.innerHTML = emptyBlock('Nessuna area trovata', 'Crea il primo magazzino, Cardex, scaffale o altra area di stoccaggio.', '⌖');
       return;
     }
 
     container.innerHTML = locations.map(location => {
-      const count = state.products.filter(product => product.locationId === location.id).length;
+      const products = state.products.filter(product => product.locationId === location.id);
+      const count = products.length;
+      const occupied = products.filter(product => Number(product.quantity || 0) > 0).length;
       return `
-        <article class="location-card clickable-card" data-location-open="${location.id}" tabindex="0" role="button" aria-label="Apri posizione ${escapeHtml(location.code)}">
+        <article class="location-card clickable-card" data-location-open="${location.id}" tabindex="0" role="button" aria-label="Apri area ${escapeHtml(location.code)}">
           <div class="location-card-head">
-            <div><h3>${escapeHtml(location.warehouse || 'Magazzino')}</h3><div class="location-code">${escapeHtml(location.code)}</div></div>
-            <button class="mini-btn" data-location-action="print" data-id="${location.id}" title="Stampa QR">▦</button>
+            <div><h3>${escapeHtml(locationDisplayName(location))}</h3><div class="location-code">${escapeHtml(location.code)}</div></div>
+            <button class="mini-btn" data-location-action="print" data-id="${location.id}" title="Stampa QR area">▦</button>
           </div>
           <div class="location-path">
-            ${pathCell('Zona', location.zone)}
-            ${pathCell('Corsia', location.aisle)}
-            ${pathCell('Scaffale', location.rack)}
-            ${pathCell('Ripiano', location.shelf)}
-            ${pathCell('Posto', location.bin)}
+            ${pathCell('Tipo', locationType(location))}
+            ${pathCell('Zona / reparto', location.zone)}
             ${pathCell('Prodotti', count)}
+            ${pathCell('Con giacenza', occupied)}
           </div>
           ${location.note ? `<p>${escapeHtml(location.note)}</p>` : ''}
           <div class="location-footer">
-            <span class="location-count">${count} prodott${count === 1 ? 'o' : 'i'}</span>
+            <span class="location-count">${count} prodott${count === 1 ? 'o' : 'i'} collegat${count === 1 ? 'o' : 'i'}</span>
             <div class="menu-actions">
               <button class="mini-btn" data-location-action="edit" data-id="${location.id}" title="Modifica">✎</button>
               <button class="mini-btn" data-location-action="delete" data-id="${location.id}" title="Elimina">⌫</button>
@@ -435,7 +463,15 @@
     const movements = state.movements.filter(movement => {
       const product = getProduct(movement.productId);
       const location = getLocation(movement.toLocationId || movement.fromLocationId);
-      const haystack = normalizeText([product?.name, movement.productName, movement.operator, movement.note, locationPath(location)].join(' '));
+      const haystack = normalizeText([
+        product?.name,
+        movement.productName,
+        movement.operator,
+        movement.note,
+        movement.fromLocationText,
+        movement.toLocationText,
+        baseLocationPath(location)
+      ].join(' '));
       return (!query || haystack.includes(query)) && (filter === 'all' || movement.type === filter);
     });
 
@@ -449,8 +485,10 @@
       const product = getProduct(movement.productId);
       const from = getLocation(movement.fromLocationId);
       const to = getLocation(movement.toLocationId);
-      let position = locationPath(to || from) || '—';
-      if (movement.type === 'MOVE') position = `${locationPath(from) || '—'} → ${locationPath(to) || '—'}`;
+      const fromText = movement.fromLocationText || baseLocationPath(from) || '—';
+      const toText = movement.toLocationText || baseLocationPath(to) || fromText || '—';
+      let position = toText;
+      if (movement.type === 'MOVE') position = `${fromText} → ${toText}`;
       return `
         <tr>
           <td>${formatDateTime(movement.timestamp)}</td>
@@ -466,7 +504,7 @@
   function renderFindResults() {
     const query = normalizeText($('#findSearch')?.value || '');
     const products = state.products
-      .filter(product => normalizeText([product.name, product.barcode, product.lot, product.sku].join(' ')).includes(query))
+      .filter(product => normalizeText([product.name, product.barcode, product.lot, product.sku, productLocationPath(product)].join(' ')).includes(query))
       .slice(0, 60);
 
     const container = $('#findResults');
@@ -475,7 +513,7 @@
     } else {
       container.innerHTML = products.map(product => {
         const location = getLocation(product.locationId);
-        return `<button class="find-item ${state.selectedFindId === product.id ? 'active' : ''}" data-find-id="${product.id}" type="button"><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(product.barcode)} · ${escapeHtml(location ? locationPath(location) : 'Senza posizione')}</small></button>`;
+        return `<button class="find-item ${state.selectedFindId === product.id ? 'active' : ''}" data-find-id="${product.id}" type="button"><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(product.barcode || 'QR interno')} · ${escapeHtml(location ? productLocationPath(product) : 'Senza posizione')}</small></button>`;
       }).join('');
     }
 
@@ -495,27 +533,30 @@
     }
 
     const location = getLocation(product.locationId);
+    const exact = productExactLocation(product, location);
     empty.classList.add('hidden');
     selected.classList.remove('hidden');
     selected.innerHTML = `
       <div class="selected-product">
         <div class="selected-head">
           <div class="product-thumb">${product.imageData ? `<img src="${product.imageData}" alt="">` : '▦'}</div>
-          <div><h2>${escapeHtml(product.name)}</h2><p>${escapeHtml(product.barcode)} · ${formatNumber(product.quantity)} ${escapeHtml(product.unit || 'pz')}</p></div>
+          <div><h2>${escapeHtml(product.name)}</h2><p>${escapeHtml(product.barcode || 'QR interno')} · ${formatNumber(product.quantity)} ${escapeHtml(product.unit || 'pz')}</p></div>
         </div>
         <div class="route-box">
-          <small>POSIZIONE REGISTRATA</small>
-          <strong>${escapeHtml(location ? locationPath(location) : 'Posizione non assegnata')}</strong>
+          <small>AREA E COLLOCAZIONE REGISTRATA</small>
+          <strong>${escapeHtml(location ? productLocationPath(product) : 'Posizione non assegnata')}</strong>
           ${location ? `<div class="route-steps">
-            ${routeStep('Magazzino', location.warehouse)}
+            ${routeStep('Area', locationDisplayName(location))}
+            ${routeStep('Tipo', locationType(location))}
             ${routeStep('Zona', location.zone)}
-            ${routeStep('Corsia', location.aisle)}
-            ${routeStep('Scaffale', location.rack)}
-            ${routeStep('Ripiano', location.shelf)}
-            ${routeStep('Posto', location.bin)}
+            ${routeStep('Corsia/colonna', exact.aisle)}
+            ${routeStep('Scaffale/cassetto', exact.rack)}
+            ${routeStep('Ripiano', exact.shelf)}
+            ${routeStep('Posto/casella', exact.bin)}
           </div>` : ''}
         </div>
-        ${location?.note ? `<div class="inline-message">Indicazione: ${escapeHtml(location.note)}</div>` : ''}
+        ${location?.note ? `<div class="inline-message">Per raggiungere l’area: ${escapeHtml(location.note)}</div>` : ''}
+        ${exact.note ? `<div class="inline-message">Collocazione precisa: ${escapeHtml(exact.note)}</div>` : ''}
         <button class="btn btn-primary" data-find-action="guide" data-id="${product.id}" ${location ? '' : 'disabled'} type="button">📷 Apri guida con fotocamera</button>
         <button class="btn btn-secondary" data-find-action="qr" data-id="${product.id}" type="button">▦ Crea e stampa QR prodotto</button>
         <button class="btn btn-secondary" data-find-action="move" data-id="${product.id}" type="button">⇄ Registra movimento</button>
@@ -695,7 +736,7 @@
       ['Archivio offline', 'indexedDB' in window],
       ['Installazione PWA', 'serviceWorker' in navigator],
       ['Lettura barcode nativa', 'BarcodeDetector' in window],
-      ['Generatore QR locale v6.1', Boolean(window.QRCode?.toCanvas)],
+      ['Generatore QR locale v6.2', Boolean(window.QRCode?.toCanvas)],
       ['Sincronizzazione Cloudflare', Boolean(window.magazzinoCloud)],
       ['Guida AR con fotocamera', Boolean(navigator.mediaDevices?.getUserMedia)],
       ['WebXR avanzato', 'xr' in navigator]
@@ -704,15 +745,15 @@
   }
 
   function populateSelects() {
-    const locationOptions = state.locations.map(location => `<option value="${location.id}">${escapeHtml(location.code)} — ${escapeHtml(locationPath(location))}</option>`).join('');
-    const productOptions = state.products.map(product => `<option value="${product.id}">${escapeHtml(product.name)} — ${escapeHtml(product.barcode)}</option>`).join('');
-    $('#productLocation').innerHTML = `<option value="">Nessuna posizione</option>${locationOptions}`;
-    $('#movementDestination').innerHTML = `<option value="">Seleziona posizione</option>${locationOptions}`;
+    const locationOptions = state.locations.map(location => `<option value="${location.id}">${escapeHtml(location.code)} — ${escapeHtml(baseLocationPath(location))}</option>`).join('');
+    const productOptions = state.products.map(product => `<option value="${product.id}">${escapeHtml(product.name)} — ${escapeHtml(product.barcode || 'QR interno')}</option>`).join('');
+    $('#productLocation').innerHTML = `<option value="">Nessuna area</option>${locationOptions}`;
+    $('#movementDestination').innerHTML = `<option value="">Seleziona area</option>${locationOptions}`;
     $('#movementProduct').innerHTML = `<option value="">Seleziona prodotto</option>${productOptions}`;
   }
 
   async function quickScan() {
-    openScanner('Scansiona prodotto o posizione', async raw => {
+    openScanner('Scansiona prodotto o area', async raw => {
       const locationCode = parseLocationCode(raw);
       const location = getLocationByCode(locationCode);
       const knownProduct = resolveScannedProduct(raw);
@@ -775,15 +816,35 @@
     $('#productLot').value = product?.lot || '';
     $('#productExpiry').value = product?.expiry || '';
     $('#productLocation').value = product?.locationId || '';
+
+    const legacyLocation = getLocation(product?.locationId);
+    const exact = productExactLocation(product || {}, legacyLocation);
+    $('#productLocationAisle').value = exact.aisle || '';
+    $('#productLocationRack').value = exact.rack || '';
+    $('#productLocationShelf').value = exact.shelf || '';
+    $('#productLocationBin').value = exact.bin || '';
+    $('#productLocationNote').value = exact.note || '';
+
     $('#productDescription').value = product?.description || '';
     $('#productImage').value = '';
     state.currentImageData = product?.imageData || '';
     updateImagePreview();
+    syncProductLocationFields();
     $('#productQrBtn')?.classList.toggle('hidden', !product);
     const saveProductQrBtn = $('#saveProductQrBtn');
     if (saveProductQrBtn) saveProductQrBtn.textContent = product ? 'Salva e aggiorna QR' : 'Salva e crea QR';
     $('#productDialog').showModal();
     setTimeout(() => (product ? $('#productName') : ($('#productBarcode').value ? $('#productBarcode') : $('#productName'))).focus(), 80);
+  }
+
+  function syncProductLocationFields() {
+    const enabled = Boolean($('#productLocation').value);
+    const group = $('#productExactLocationFields');
+    group.classList.toggle('is-disabled', !enabled);
+    ['#productLocationAisle', '#productLocationRack', '#productLocationShelf', '#productLocationBin', '#productLocationNote'].forEach(selector => {
+      $(selector).disabled = !enabled;
+      if (!enabled) $(selector).value = '';
+    });
   }
 
   async function saveProduct(event) {
@@ -801,6 +862,7 @@
 
     const quantity = toNumber($('#productQuantity').value);
     const now = new Date().toISOString();
+    const locationId = $('#productLocation').value;
     const product = {
       id,
       barcode,
@@ -812,23 +874,31 @@
       minStock: toNumber($('#productMinStock').value),
       lot: $('#productLot').value.trim(),
       expiry: $('#productExpiry').value,
-      locationId: $('#productLocation').value,
+      locationId,
+      locationAisle: locationId ? $('#productLocationAisle').value.trim() : '',
+      locationRack: locationId ? $('#productLocationRack').value.trim() : '',
+      locationShelf: locationId ? $('#productLocationShelf').value.trim() : '',
+      locationBin: locationId ? $('#productLocationBin').value.trim() : '',
+      locationNote: locationId ? $('#productLocationNote').value.trim() : '',
       description: $('#productDescription').value.trim(),
       imageData: state.currentImageData || '',
       createdAt: existing?.createdAt || now,
       updatedAt: now
     };
 
+    const oldPositionText = existing ? productLocationPath(existing) : '';
+    const newPositionText = productLocationPath(product);
+
     try {
       await warehouseDB.put('products', product);
       if (!existing && quantity > 0) {
-        await createMovementRecord(product, 'IN', quantity, null, product.locationId, 'Giacenza iniziale');
+        await createMovementRecord(product, 'IN', quantity, null, product.locationId, 'Giacenza iniziale', { toText: newPositionText });
       } else if (existing) {
         if (quantity !== Number(existing.quantity || 0)) {
-          await createMovementRecord(product, 'ADJUST', quantity, existing.locationId, product.locationId, `Rettifica da ${formatNumber(existing.quantity)} a ${formatNumber(quantity)}`);
+          await createMovementRecord(product, 'ADJUST', quantity, existing.locationId, product.locationId, `Rettifica da ${formatNumber(existing.quantity)} a ${formatNumber(quantity)}`, { fromText: oldPositionText, toText: newPositionText });
         }
-        if (existing.locationId !== product.locationId) {
-          await createMovementRecord(product, 'MOVE', quantity, existing.locationId, product.locationId, 'Posizione modificata dalla scheda prodotto');
+        if (oldPositionText !== newPositionText) {
+          await createMovementRecord(product, 'MOVE', quantity, existing.locationId, product.locationId, 'Collocazione modificata dalla scheda prodotto', { fromText: oldPositionText, toText: newPositionText });
         }
       }
       await loadState();
@@ -871,14 +941,11 @@
   function openLocationForm(location = null, code = '') {
     $('#locationForm').reset();
     $('#locationId').value = location?.id || '';
-    $('#locationDialogTitle').textContent = location ? 'Modifica posizione' : 'Nuova posizione';
+    $('#locationDialogTitle').textContent = location ? 'Modifica area' : 'Nuova area';
     $('#locationCode').value = location?.code || code || '';
-    $('#locationWarehouse').value = location?.warehouse || '';
+    $('#locationName').value = locationDisplayName(location) === 'Area di stoccaggio' ? '' : locationDisplayName(location);
+    $('#locationType').value = locationType(location) || 'Magazzino';
     $('#locationZone').value = location?.zone || '';
-    $('#locationAisle').value = location?.aisle || '';
-    $('#locationRack').value = location?.rack || '';
-    $('#locationShelf').value = location?.shelf || '';
-    $('#locationBin').value = location?.bin || '';
     $('#locationNote').value = location?.note || '';
     $('#locationQrBtn')?.classList.toggle('hidden', !location);
     const saveLocationQrBtn = $('#saveLocationQrBtn');
@@ -890,10 +957,12 @@
     event.preventDefault();
     const afterSave = event.submitter?.dataset.afterSave || '';
     const id = $('#locationId').value || uid();
-    const code = parseLocationCode($('#locationCode').value.trim());
+    const name = $('#locationName').value.trim();
+    const type = $('#locationType').value;
+    const code = parseLocationCode($('#locationCode').value.trim()) || generateLocationCode(name, type);
     const duplicate = state.locations.find(location => normalizeText(location.code) === normalizeText(code) && location.id !== id);
     if (duplicate) {
-      notify('Esiste già una posizione con questo codice.', 'error');
+      notify('Esiste già un’area con questo codice.', 'error');
       return;
     }
 
@@ -902,12 +971,9 @@
     const location = {
       id,
       code,
-      warehouse: $('#locationWarehouse').value.trim(),
+      name,
+      type,
       zone: $('#locationZone').value.trim(),
-      aisle: $('#locationAisle').value.trim(),
-      rack: $('#locationRack').value.trim(),
-      shelf: $('#locationShelf').value.trim(),
-      bin: $('#locationBin').value.trim(),
       note: $('#locationNote').value.trim(),
       createdAt: existing?.createdAt || now,
       updatedAt: now
@@ -918,14 +984,14 @@
       await loadState();
       renderAll();
       $('#locationDialog').close();
-      notify('Posizione salvata. Il QR della posizione è pronto.', 'success');
+      notify('Area salvata. Il QR dell’area è pronto.', 'success');
       if (afterSave === 'qr') {
         const savedLocation = getLocation(location.id) || location;
         setTimeout(() => printLocationLabel(savedLocation), 180);
       }
     } catch (error) {
       console.error(error);
-      notify('Errore durante il salvataggio della posizione.', 'error');
+      notify('Errore durante il salvataggio dell’area.', 'error');
     }
   }
 
@@ -935,6 +1001,12 @@
     $('#movementProduct').value = productId;
     $('#movementType').value = type;
     $('#movementQuantity').value = 1;
+    $('#movementDestination').value = '';
+    $('#movementLocationAisle').value = '';
+    $('#movementLocationRack').value = '';
+    $('#movementLocationShelf').value = '';
+    $('#movementLocationBin').value = '';
+    $('#movementLocationNote').value = '';
     $('#movementNote').value = '';
     syncMovementFields();
     $('#movementDialog').showModal();
@@ -944,18 +1016,31 @@
     const type = $('#movementType').value;
     const product = getProduct($('#movementProduct').value);
     const destinationField = $('#movementDestinationField');
+    const exactFields = $('#movementExactFields');
     const quantity = $('#movementQuantity');
     const warning = $('#movementWarning');
+    const moving = type === 'MOVE';
 
-    destinationField.classList.toggle('hidden', type !== 'MOVE');
-    $('#movementDestination').required = type === 'MOVE';
+    destinationField.classList.toggle('hidden', !moving);
+    exactFields.classList.toggle('hidden', !moving);
+    $('#movementDestination').required = moving;
     quantity.disabled = false;
     quantity.min = '0';
 
-    if (type === 'MOVE') {
+    if (moving) {
       quantity.value = product ? product.quantity : 0;
       quantity.disabled = true;
-      warning.textContent = 'Nella prima versione lo spostamento trasferisce tutta la giacenza del prodotto nella nuova posizione.';
+      if (product && !$('#movementDestination').value) {
+        $('#movementDestination').value = product.locationId || '';
+        const exact = productExactLocation(product);
+        $('#movementLocationAisle').value = exact.aisle;
+        $('#movementLocationRack').value = exact.rack;
+        $('#movementLocationShelf').value = exact.shelf;
+        $('#movementLocationBin').value = exact.bin;
+        $('#movementLocationNote').value = exact.note;
+      }
+      syncMovementDestinationFields(false);
+      warning.textContent = 'Lo spostamento trasferisce tutta la giacenza. Puoi cambiare area oppure soltanto scaffale, ripiano o posto nella stessa area.';
       warning.classList.remove('hidden');
     } else if (type === 'ADJUST') {
       quantity.value = product ? product.quantity : 0;
@@ -964,6 +1049,16 @@
     } else {
       warning.classList.add('hidden');
     }
+  }
+
+  function syncMovementDestinationFields(resetExact = false) {
+    const enabled = Boolean($('#movementDestination').value);
+    const product = getProduct($('#movementProduct').value);
+    const changedArea = enabled && product && $('#movementDestination').value !== product.locationId;
+    ['#movementLocationAisle', '#movementLocationRack', '#movementLocationShelf', '#movementLocationBin', '#movementLocationNote'].forEach(selector => {
+      $(selector).disabled = !enabled;
+      if (!enabled || (resetExact && changedArea)) $(selector).value = '';
+    });
   }
 
   async function saveMovement(event) {
@@ -979,30 +1074,44 @@
     const destinationId = $('#movementDestination').value;
     let newQuantity = Number(product.quantity || 0);
     let movementQuantity = entered;
-    let newLocationId = product.locationId || '';
+    let updatedProduct = { ...product };
+    const fromText = productLocationPath(product);
 
     if (type === 'IN') {
       if (entered <= 0) return notify('La quantità deve essere maggiore di zero.', 'error');
       newQuantity += entered;
+      updatedProduct.quantity = newQuantity;
     } else if (type === 'OUT') {
       if (entered <= 0) return notify('La quantità deve essere maggiore di zero.', 'error');
       if (entered > newQuantity) return notify('Quantità insufficiente per il prelievo.', 'error');
       newQuantity -= entered;
+      updatedProduct.quantity = newQuantity;
     } else if (type === 'ADJUST') {
       if (entered < 0) return notify('La quantità non può essere negativa.', 'error');
       newQuantity = entered;
+      updatedProduct.quantity = newQuantity;
     } else if (type === 'MOVE') {
-      if (!destinationId) return notify('Seleziona la nuova posizione.', 'error');
-      if (destinationId === product.locationId) return notify('Il prodotto è già in questa posizione.', 'error');
+      if (!destinationId) return notify('Seleziona o scansiona la nuova area.', 'error');
       movementQuantity = Number(product.quantity || 0);
-      newLocationId = destinationId;
+      updatedProduct = {
+        ...product,
+        locationId: destinationId,
+        locationAisle: $('#movementLocationAisle').value.trim(),
+        locationRack: $('#movementLocationRack').value.trim(),
+        locationShelf: $('#movementLocationShelf').value.trim(),
+        locationBin: $('#movementLocationBin').value.trim(),
+        locationNote: $('#movementLocationNote').value.trim()
+      };
+      const candidateText = productLocationPath(updatedProduct);
+      if (candidateText === fromText) return notify('La nuova collocazione coincide con quella attuale.', 'error');
     }
 
-    const updatedProduct = { ...product, quantity: newQuantity, locationId: newLocationId, updatedAt: new Date().toISOString() };
+    updatedProduct.updatedAt = new Date().toISOString();
+    const toText = productLocationPath(updatedProduct);
 
     try {
       await warehouseDB.put('products', updatedProduct);
-      await createMovementRecord(updatedProduct, type, movementQuantity, product.locationId, newLocationId, $('#movementNote').value.trim());
+      await createMovementRecord(updatedProduct, type, movementQuantity, product.locationId, updatedProduct.locationId, $('#movementNote').value.trim(), { fromText, toText });
       await loadState();
       renderAll();
       $('#movementDialog').close();
@@ -1013,7 +1122,9 @@
     }
   }
 
-  async function createMovementRecord(product, type, quantity, fromLocationId, toLocationId, note = '') {
+  async function createMovementRecord(product, type, quantity, fromLocationId, toLocationId, note = '', position = {}) {
+    const from = getLocation(fromLocationId);
+    const to = getLocation(toLocationId);
     const movement = {
       id: uid(),
       productId: product.id,
@@ -1022,6 +1133,8 @@
       quantity: Number(quantity || 0),
       fromLocationId: fromLocationId || '',
       toLocationId: toLocationId || '',
+      fromLocationText: position.fromText || baseLocationPath(from) || '',
+      toLocationText: position.toText || productLocationPath(product) || baseLocationPath(to) || '',
       operator: state.settings.operator || 'Operatore',
       note,
       timestamp: new Date().toISOString()
@@ -1085,17 +1198,17 @@
     if (button.dataset.locationAction === 'delete') {
       const count = state.products.filter(product => product.locationId === location.id).length;
       if (count) {
-        notify(`Non puoi eliminare la posizione: contiene ${count} prodott${count === 1 ? 'o' : 'i'}.`, 'error');
+        notify(`Non puoi eliminare l’area: contiene ${count} prodott${count === 1 ? 'o' : 'i'}.`, 'error');
         return;
       }
-      const authorized = await requireAdminPin('Inserisci il PIN per eliminare questa posizione.');
+      const authorized = await requireAdminPin('Inserisci il PIN per eliminare questa area.');
       if (!authorized) return;
-      const confirmed = await askConfirmation('Elimina posizione', `Vuoi eliminare la posizione ${location.code}?`);
+      const confirmed = await askConfirmation('Elimina area', `Vuoi eliminare l’area ${locationDisplayName(location)} (${location.code})?`);
       if (!confirmed) return;
       await warehouseDB.delete('locations', location.id);
       await loadState();
       renderAll();
-      notify('Posizione eliminata.', 'success');
+      notify('Area eliminata.', 'success');
     }
   }
 
@@ -1111,6 +1224,7 @@
     const product = getProduct(productId);
     if (!product) return;
     const location = getLocation(product.locationId);
+    const exact = productExactLocation(product, location);
     state.currentDetailProductId = product.id;
     $('#productDetailTitle').textContent = product.name;
     $('#productDetailContent').innerHTML = `
@@ -1125,7 +1239,13 @@
           ${detailField('Lotto', product.lot || '—')}
           ${detailField('Scadenza', product.expiry ? formatDate(product.expiry) : '—')}
           ${detailField('Scorta minima', `${formatNumber(product.minStock)} ${product.unit || 'pz'}`)}
-          ${detailField('Posizione', location ? locationPath(location) : 'Non assegnata', true)}
+          ${detailField('Area di stoccaggio', location ? baseLocationPath(location) : 'Non assegnata', true)}
+          ${detailField('Corsia / colonna', exact.aisle || '—')}
+          ${detailField('Scaffale / cassetto', exact.rack || '—')}
+          ${detailField('Ripiano', exact.shelf || '—')}
+          ${detailField('Posto / casella', exact.bin || '—')}
+          ${detailField('Indicazione precisa', exact.note || '—', true)}
+          ${detailField('Posizione completa', location ? productLocationPath(product) : 'Non assegnata', true)}
           ${detailField('Descrizione', product.description || 'Nessuna descrizione', true)}
           ${detailField('Ultimo aggiornamento', formatDateTime(product.updatedAt || product.createdAt), true)}
         </div>
@@ -1139,26 +1259,23 @@
     if (!location) return;
     const products = state.products.filter(product => product.locationId === location.id);
     state.currentDetailLocationId = location.id;
-    $('#locationDetailTitle').textContent = location.code;
+    $('#locationDetailTitle').textContent = locationDisplayName(location);
     $('#locationDetailContent').innerHTML = `
       <div class="detail-grid">
-        ${detailField('Codice posizione', location.code, true)}
-        ${detailField('Magazzino', location.warehouse || '—')}
-        ${detailField('Zona', location.zone || '—')}
-        ${detailField('Corsia', location.aisle || '—')}
-        ${detailField('Scaffale', location.rack || '—')}
-        ${detailField('Ripiano', location.shelf || '—')}
-        ${detailField('Posto', location.bin || '—')}
-        ${detailField('Prodotti presenti', String(products.length))}
-        ${detailField('Indicazioni', location.note || 'Nessuna indicazione', true)}
+        ${detailField('Codice area', location.code, true)}
+        ${detailField('Nome area', locationDisplayName(location), true)}
+        ${detailField('Tipo', locationType(location))}
+        ${detailField('Zona / reparto', location.zone || '—')}
+        ${detailField('Prodotti collegati', String(products.length))}
+        ${detailField('Indicazioni per raggiungerla', location.note || 'Nessuna indicazione', true)}
       </div>
       <div class="location-products">
-        <h3>Prodotti in questa posizione</h3>
+        <h3>Prodotti in questa area</h3>
         ${products.length ? products.map(product => `
           <button class="location-product-link" data-detail-product="${product.id}" type="button">
-            <span><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(product.barcode || 'QR interno')}</small></span>
+            <span><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(productLocationPath(product))}</small></span>
             <b>${formatNumber(product.quantity)} ${escapeHtml(product.unit || 'pz')}</b>
-          </button>`).join('') : '<div class="empty-state">Nessun prodotto assegnato a questa posizione.</div>'}
+          </button>`).join('') : '<div class="empty-state">Nessun prodotto assegnato a questa area.</div>'}
       </div>`;
     $('#locationDetailDialog').showModal();
   }
@@ -1234,22 +1351,23 @@
   async function printLocationLabel(location) {
     try {
       const lines = [
-        location.warehouse || '',
-        locationPath(location),
+        `Nome: ${locationDisplayName(location)}`,
+        `Tipo: ${locationType(location)}`,
+        location.zone ? `Zona / reparto: ${location.zone}` : '',
         location.note || ''
       ].filter(Boolean);
 
       await openQrPreview({
         qrText: `MAGAR:LOC:${location.code}`,
-        kicker: 'POSIZIONE DI MAGAZZINO',
+        kicker: 'AREA DI STOCCAGGIO',
         title: location.code,
         lines,
-        filename: `posizione-${safeFilename(location.code)}.png`,
-        description: `QR della posizione ${location.code}. Puoi scaricarlo, condividerlo con iBleem oppure stamparlo.`
+        filename: `area-${safeFilename(location.code)}.png`,
+        description: `QR dell’area ${locationDisplayName(location)}. Scansionalo quando assegni o sposti un prodotto.`
       });
     } catch (error) {
-      console.error('QR posizione:', error);
-      notify(`Errore QR posizione: ${error.message || 'generazione non riuscita'}`, 'error');
+      console.error('QR area:', error);
+      notify(`Errore QR area: ${error.message || 'generazione non riuscita'}`, 'error');
     }
   }
 
@@ -1261,7 +1379,7 @@
         product.barcode ? `Barcode: ${product.barcode}` : 'Prodotto senza barcode: usa questo QR interno',
         product.lot ? `Lotto: ${product.lot}` : '',
         product.expiry ? `Scadenza: ${formatDate(product.expiry)}` : '',
-        `Posizione: ${location ? locationPath(location) : 'Non assegnata'}`
+        `Posizione: ${location ? productLocationPath(product) : 'Non assegnata'}`
       ].filter(Boolean);
 
       await openQrPreview({
@@ -1270,7 +1388,7 @@
         title: product.name,
         lines,
         filename: `prodotto-${safeFilename(product.name || product.id)}.png`,
-        description: `QR interno del prodotto “${product.name}”. Resta valido anche se cambi quantità o posizione.`
+        description: `QR interno del prodotto “${product.name}”. La scheda mostrerà sempre l’ultima collocazione salvata.`
       });
     } catch (error) {
       console.error('QR prodotto:', error);
@@ -1520,26 +1638,27 @@
   }
 
   async function loadDemoData() {
-    const confirmed = await askConfirmation('Carica dati dimostrativi', 'Verranno aggiunti alcuni prodotti e posizioni di esempio.');
+    const confirmed = await askConfirmation('Carica dati dimostrativi', 'Verranno aggiunti alcuni prodotti e aree di stoccaggio di esempio.');
     if (!confirmed) return;
 
     const suffix = String(Date.now()).slice(-5);
     const now = new Date().toISOString();
     const locations = [
-      { id: uid(), code: `M1-A-01-01-01-${suffix}`, warehouse: 'Magazzino 1', zone: 'A', aisle: '01', rack: '01', shelf: '01', bin: '01', note: 'Ingresso corsia, lato sinistro', createdAt: now, updatedAt: now },
-      { id: uid(), code: `M1-A-01-02-02-${suffix}`, warehouse: 'Magazzino 1', zone: 'A', aisle: '01', rack: '02', shelf: '02', bin: '01', note: 'Secondo modulo', createdAt: now, updatedAt: now },
-      { id: uid(), code: `M1-B-03-05-03-${suffix}`, warehouse: 'Magazzino 1', zone: 'B', aisle: '03', rack: '05', shelf: '03', bin: '02', note: 'Lato destro', createdAt: now, updatedAt: now }
+      { id: uid(), code: `CARDEX-01-${suffix}`, name: 'Cardex 1', type: 'Cardex', zone: 'Reparto CH24', note: 'Lato ingresso reparto, vicino alla porta 2', createdAt: now, updatedAt: now },
+      { id: uid(), code: `SCAFF-A-${suffix}`, name: 'Scaffalatura A', type: 'Scaffalatura', zone: 'Magazzino ricambi', note: 'Prima scaffalatura sulla sinistra', createdAt: now, updatedAt: now },
+      { id: uid(), code: `MAG-TEC-${suffix}`, name: 'Magazzino tecnico', type: 'Magazzino', zone: 'Zona B', note: 'Locale dietro la linea principale', createdAt: now, updatedAt: now }
     ];
     for (const location of locations) await warehouseDB.put('locations', location);
+    await loadState();
 
     const products = [
-      { id: uid(), barcode: `8000000${suffix}1`, name: 'Cuscinetto dimostrativo 6204', sku: 'CUS-6204', category: 'Cuscinetti', quantity: 48, unit: 'pz', minStock: 20, lot: 'L26-A1', expiry: '', locationId: locations[0].id, description: 'Confezione cuscinetti per linea produttiva', imageData: '', createdAt: now, updatedAt: now },
-      { id: uid(), barcode: `8000000${suffix}2`, name: 'Anello OR 42 mm', sku: 'OR-042', category: 'Guarnizioni', quantity: 12, unit: 'pz', minStock: 15, lot: 'OR2607', expiry: '', locationId: locations[1].id, description: 'Anello di tenuta in gomma', imageData: '', createdAt: now, updatedAt: now },
-      { id: uid(), barcode: `8000000${suffix}3`, name: 'Lubrificante tecnico', sku: 'LUB-500', category: 'Lubrificanti', quantity: 8, unit: 'confezioni', minStock: 4, lot: 'LB-778', expiry: nextDate(240), locationId: locations[2].id, description: 'Flacone da 500 ml', imageData: '', createdAt: now, updatedAt: now }
+      { id: uid(), barcode: `8000000${suffix}1`, name: 'Cuscinetto dimostrativo 6204', sku: 'CUS-6204', category: 'Cuscinetti', quantity: 48, unit: 'pz', minStock: 20, lot: 'L26-A1', expiry: '', locationId: locations[0].id, locationAisle: 'Colonna B', locationRack: 'Cassetto 18', locationShelf: '', locationBin: 'Casella 3', locationNote: 'Scomparto anteriore', description: 'Confezione cuscinetti per linea produttiva', imageData: '', createdAt: now, updatedAt: now },
+      { id: uid(), barcode: `8000000${suffix}2`, name: 'Anello OR 42 mm', sku: 'OR-042', category: 'Guarnizioni', quantity: 12, unit: 'pz', minStock: 15, lot: 'OR2607', expiry: '', locationId: locations[1].id, locationAisle: 'Corsia 1', locationRack: 'Modulo 2', locationShelf: 'Ripiano 3', locationBin: 'Contenitore blu', locationNote: 'Lato destro', description: 'Anello di tenuta in gomma', imageData: '', createdAt: now, updatedAt: now },
+      { id: uid(), barcode: `8000000${suffix}3`, name: 'Lubrificante tecnico', sku: 'LUB-500', category: 'Lubrificanti', quantity: 8, unit: 'confezioni', minStock: 4, lot: 'LB-778', expiry: nextDate(240), locationId: locations[2].id, locationAisle: 'Corsia 3', locationRack: 'Scaffale 5', locationShelf: 'Ripiano 2', locationBin: 'Posto 4', locationNote: 'Vaschetta di contenimento', description: 'Flacone da 500 ml', imageData: '', createdAt: now, updatedAt: now }
     ];
     for (const product of products) {
       await warehouseDB.put('products', product);
-      await createMovementRecord(product, 'IN', product.quantity, null, product.locationId, 'Dato dimostrativo');
+      await createMovementRecord(product, 'IN', product.quantity, null, product.locationId, 'Dato dimostrativo', { toText: productLocationPath(product) });
     }
 
     await loadState();
@@ -1698,28 +1817,29 @@
   async function openArGuide(productId, calibratedLocationId = null, wrongCode = '') {
     const product = getProduct(productId);
     const location = getLocation(product?.locationId);
-    if (!product || !location) return notify('Il prodotto non ha una posizione valida.', 'error');
+    if (!product || !location) return notify('Il prodotto non ha un’area valida.', 'error');
 
     state.arProductId = productId;
     $('#arProductName').textContent = product.name;
-    $('#arLocationPath').textContent = locationPath(location);
-    $('#arLocationNote').textContent = location.note || 'Raggiungi la posizione e scansiona il suo QR.';
-    $('#arTargetLabel').textContent = 'Scansiona il QR della posizione';
+    $('#arLocationPath').textContent = productLocationPath(product);
+    const exact = productExactLocation(product, location);
+    $('#arLocationNote').textContent = [location.note, exact.note].filter(Boolean).join(' · ') || 'Raggiungi l’area, scansiona il suo QR e segui i dettagli di ripiano e posto.';
+    $('#arTargetLabel').textContent = 'Scansiona il QR dell’area';
     $('#arLockBadge').textContent = 'Da calibrare';
     $('#arLockBadge').classList.remove('locked');
     $('#completeFindBtn').classList.add('hidden');
     $('#calibrateArBtn').classList.remove('hidden');
 
     if (calibratedLocationId === location.id) {
-      $('#arTargetLabel').textContent = `Posizione confermata: ${location.code}`;
-      $('#arLockBadge').textContent = 'Posizione verificata';
+      $('#arTargetLabel').textContent = `Area confermata: ${location.code} · ${productLocationExactText(product) || 'segui i dettagli indicati'}`;
+      $('#arLockBadge').textContent = 'Area verificata';
       $('#arLockBadge').classList.add('locked');
       $('#completeFindBtn').classList.remove('hidden');
       $('#calibrateArBtn').classList.add('hidden');
       if (navigator.vibrate) navigator.vibrate([80, 50, 80]);
     } else if (wrongCode) {
       $('#arTargetLabel').textContent = `QR errato: ${wrongCode}. Cerca ${location.code}`;
-      $('#arLockBadge').textContent = 'Posizione errata';
+      $('#arLockBadge').textContent = 'Area errata';
     }
 
     $('#arDialog').showModal();
@@ -1736,7 +1856,7 @@
   function calibrateArGuide() {
     const productId = state.arProductId;
     closeArGuide();
-    openScanner('Scansiona QR della posizione', raw => {
+    openScanner('Scansiona QR dell’area', raw => {
       const code = parseLocationCode(raw);
       const location = getLocationByCode(code);
       openArGuide(productId, location?.id || null, code);
@@ -1837,17 +1957,72 @@
     return state.locations.find(location => normalizeText(location.code) === normalized) || null;
   }
 
-  function locationPath(location) {
+  function locationDisplayName(location) {
+    if (!location) return 'Area di stoccaggio';
+    return String(location.name || location.warehouse || location.code || 'Area di stoccaggio').trim();
+  }
+
+  function locationType(location) {
+    if (!location) return '';
+    return String(location.type || (location.warehouse ? 'Magazzino' : 'Area')).trim();
+  }
+
+  function baseLocationPath(location) {
     if (!location) return '';
     const pieces = [
-      location.warehouse,
-      location.zone && `Zona ${location.zone}`,
-      location.aisle && `Corsia ${location.aisle}`,
-      location.rack && `Scaffale ${location.rack}`,
-      location.shelf && `Ripiano ${location.shelf}`,
-      location.bin && `Posto ${location.bin}`
+      locationDisplayName(location),
+      locationType(location) && locationType(location) !== locationDisplayName(location) ? locationType(location) : '',
+      location.zone && `Zona/Reparto ${location.zone}`
     ].filter(Boolean);
     return pieces.join(' › ');
+  }
+
+  function productExactLocation(product, location = getLocation(product?.locationId)) {
+    if (!product) return { aisle: '', rack: '', shelf: '', bin: '', note: '' };
+    return {
+      aisle: String(product.locationAisle || location?.aisle || '').trim(),
+      rack: String(product.locationRack || location?.rack || '').trim(),
+      shelf: String(product.locationShelf || location?.shelf || '').trim(),
+      bin: String(product.locationBin || location?.bin || '').trim(),
+      note: String(product.locationNote || '').trim()
+    };
+  }
+
+  function productLocationExactText(product) {
+    const exact = productExactLocation(product);
+    const pieces = [
+      exact.aisle && `Corsia/Colonna ${exact.aisle}`,
+      exact.rack && `Scaffale/Cassetto ${exact.rack}`,
+      exact.shelf && `Ripiano ${exact.shelf}`,
+      exact.bin && `Posto/Casella ${exact.bin}`,
+      exact.note
+    ].filter(Boolean);
+    return pieces.join(' › ');
+  }
+
+  function productLocationPath(product) {
+    if (!product?.locationId) return '';
+    const location = getLocation(product.locationId);
+    if (!location) return '';
+    const exact = productLocationExactText(product);
+    return [baseLocationPath(location), exact].filter(Boolean).join(' › ');
+  }
+
+  function generateLocationCode(name, type) {
+    const base = `${type || 'AREA'}-${name || 'STOCCAGGIO'}`
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 20) || 'AREA';
+    let code = base;
+    let counter = 2;
+    while (state.locations.some(location => normalizeText(location.code) === normalizeText(code))) {
+      code = `${base}-${counter}`;
+      counter += 1;
+    }
+    return code;
   }
 
   function pathCell(label, value) {

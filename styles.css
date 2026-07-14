@@ -507,3 +507,20 @@ tbody tr:last-child td { border-bottom: 0; }
   .detail-field.full { grid-column: auto; }
   .cloud-panel { grid-column: auto; }
 }
+
+/* v6.2: area generale + collocazione esatta del prodotto */
+.exact-location-group {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px;
+  background: #f7fbff;
+}
+.exact-location-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 12px;
+}
+.exact-location-heading strong { font-size: 15px; }
+.exact-location-heading small { color: var(--muted); }
+.exact-location-group.is-disabled { opacity: .58; }
