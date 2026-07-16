@@ -9,12 +9,12 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=6.3.2">
+  <link rel="stylesheet" href="styles.css?v=6.4.0">
   <script defer src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
-  <script defer src="qrcode-local.js?v=6.3.2"></script>
-  <script defer src="db.js?v=6.3.2"></script>
-  <script defer src="cloud.js?v=6.3.2"></script>
-  <script defer src="app.js?v=6.3.2"></script>
+  <script defer src="qrcode-local.js?v=6.4.0"></script>
+  <script defer src="db.js?v=6.4.0"></script>
+  <script defer src="cloud.js?v=6.4.0"></script>
+  <script defer src="app.js?v=6.4.0"></script>
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -281,6 +281,23 @@
             <label class="field field-span"><span>Indicazioni aggiuntive</span><input id="productLocationNote" name="locationNote" placeholder="es. contenitore blu, seconda fila"></label>
           </div>
         </div>
+        <section class="ar-reference-editor field-span" aria-labelledby="arReferenceEditorTitle">
+          <div class="ar-reference-editor-copy">
+            <strong id="arReferenceEditorTitle">Posizione visiva AR assistita</strong>
+            <small>Inquadra il punto esatto, tocca dove si trova il prodotto e salva una foto di riferimento con il mirino. Non sostituisce Piano, Posizione e Profondità.</small>
+          </div>
+          <div class="button-row">
+            <button id="recordArPositionBtn" class="btn btn-secondary" type="button">📍 Registra punto con fotocamera</button>
+            <button id="removeArPositionBtn" class="btn btn-ghost hidden" type="button">Rimuovi riferimento AR</button>
+          </div>
+          <div id="productArPreview" class="ar-reference-preview hidden">
+            <div class="ar-reference-image-wrap">
+              <img id="productArPreviewImage" alt="Foto della posizione visiva del prodotto">
+              <span id="productArPreviewMarker" class="ar-reference-marker" aria-hidden="true"></span>
+            </div>
+            <p id="productArStatus">Riferimento visivo registrato.</p>
+          </div>
+        </section>
         <label class="field field-span"><span>Descrizione / contenuto confezione</span><textarea id="productDescription" name="description" rows="3"></textarea></label>
         <label class="field field-span"><span>Foto confezione</span><input id="productImage" name="image" type="file" accept="image/*" capture="environment"><small>La foto viene salvata nell’archivio del dispositivo.</small></label>
         <div id="productImagePreview" class="image-preview field-span hidden"></div>
@@ -371,17 +388,45 @@
       <div class="ar-topbar">
         <button id="closeArBtn" class="round-btn" type="button" aria-label="Chiudi">×</button>
         <div><small>GUIDA AR ASSISTITA</small><strong id="arProductName">Prodotto</strong></div>
-        <span id="arLockBadge" class="ar-badge">Da calibrare</span>
+        <span id="arLockBadge" class="ar-badge">Area non verificata</span>
       </div>
       <div class="ar-target">
         <div class="pulse-ring"></div>
         <div class="target-pin">⌖</div>
-        <strong id="arTargetLabel">Scansiona il QR della posizione</strong>
+        <strong id="arTargetLabel">Raggiungi l’area e scansiona il suo QR</strong>
       </div>
-      <div class="ar-bottom-card">
-        <div><small>DESTINAZIONE</small><strong id="arLocationPath">—</strong><p id="arLocationNote"></p></div>
-        <button id="calibrateArBtn" class="btn btn-primary" type="button">📷 Scansiona QR</button>
+      <div class="ar-bottom-card ar-guide-card">
+        <div class="ar-guide-heading"><small>DESTINAZIONE REGISTRATA</small><strong id="arLocationPath">—</strong></div>
+        <div id="arDestinationGrid" class="ar-destination-grid" aria-label="Dati della posizione"></div>
+        <p id="arLocationNote"></p>
+        <div id="arReferencePanel" class="ar-reference-panel hidden">
+          <div class="ar-reference-panel-heading"><strong>Riferimento visivo</strong><small>Confronta questa immagine con ciò che vedi davanti a te.</small></div>
+          <div class="ar-reference-image-wrap">
+            <img id="arReferenceImage" alt="Foto di riferimento della posizione del prodotto">
+            <span id="arReferenceMarker" class="ar-reference-marker" aria-hidden="true"></span>
+          </div>
+        </div>
+        <button id="calibrateArBtn" class="btn btn-primary" type="button">📷 Scansiona QR area</button>
         <button id="completeFindBtn" class="btn btn-secondary hidden" type="button">✓ Prodotto trovato</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="arCaptureDialog" class="modal ar-modal">
+    <div class="ar-card ar-capture-card">
+      <video id="arCaptureVideo" playsinline muted autoplay></video>
+      <div class="ar-shade"></div>
+      <button id="arCaptureStage" class="ar-capture-stage" type="button" aria-label="Tocca il punto esatto dove si trova il prodotto"></button>
+      <span id="arCaptureMarker" class="ar-capture-marker hidden" aria-hidden="true">⌖</span>
+      <div class="ar-topbar">
+        <button id="closeArCaptureBtn" class="round-btn" type="button" aria-label="Chiudi">×</button>
+        <div><small>REGISTRA POSIZIONE VISIVA</small><strong id="arCaptureProductName">Nuovo prodotto</strong></div>
+        <span class="ar-badge">Fotocamera</span>
+      </div>
+      <div class="ar-bottom-card ar-capture-bottom">
+        <div><small>COME FARE</small><strong>Tocca sullo schermo il punto esatto</strong><p id="arCaptureHelp">Inquadra il ripiano o il posto dove si trova il prodotto, poi tocca quel punto.</p></div>
+        <button id="saveArCaptureBtn" class="btn btn-primary" type="button" disabled>📍 Salva riferimento visivo</button>
+        <button id="cancelArCaptureBtn" class="btn btn-secondary" type="button">Annulla</button>
       </div>
     </div>
   </dialog>

@@ -109,9 +109,15 @@
       if (!value || typeof value !== 'object') return value;
       const copy = typeof structuredClone === 'function' ? structuredClone(value) : JSON.parse(JSON.stringify(value));
       const json = JSON.stringify(copy);
-      if (json.length > 1750000 && copy.imageData) {
-        copy.imageData = '';
-        copy.cloudImageOmitted = true;
+      if (json.length > 1750000) {
+        if (copy.imageData) {
+          copy.imageData = '';
+          copy.cloudImageOmitted = true;
+        }
+        if (copy.arReferenceImage) {
+          copy.arReferenceImage = '';
+          copy.cloudArReferenceOmitted = true;
+        }
       }
       return copy;
     }

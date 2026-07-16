@@ -20,6 +20,12 @@
     cameraIndex: 0,
     torchOn: false,
     currentImageData: '',
+    currentArReferenceImage: '',
+    currentArPointX: null,
+    currentArPointY: null,
+    currentArRecordedAt: '',
+    arCaptureStream: null,
+    arCapturePoint: null,
     selectedFindId: null,
     arStream: null,
     arProductId: null,
@@ -223,6 +229,13 @@
     $('#printQrBtn').addEventListener('click', printQrImage);
 
     $('#productImage').addEventListener('change', handleProductImage);
+    $('#recordArPositionBtn').addEventListener('click', openArCapture);
+    $('#removeArPositionBtn').addEventListener('click', removeArReference);
+    $('#arCaptureStage').addEventListener('click', setArCapturePoint);
+    $('#saveArCaptureBtn').addEventListener('click', saveArCapture);
+    $('#closeArCaptureBtn').addEventListener('click', closeArCapture);
+    $('#cancelArCaptureBtn').addEventListener('click', closeArCapture);
+    $('#arCaptureDialog').addEventListener('close', stopArCaptureCamera);
     $('#productLocation').addEventListener('change', syncProductLocationFields);
     $('#movementType').addEventListener('change', syncMovementFields);
     $('#movementProduct').addEventListener('change', syncMovementFields);
@@ -836,7 +849,12 @@
     $('#productDescription').value = product?.description || '';
     $('#productImage').value = '';
     state.currentImageData = product?.imageData || '';
+    state.currentArReferenceImage = product?.arReferenceImage || '';
+    state.currentArPointX = product?.arPointX !== null && product?.arPointX !== undefined && product?.arPointX !== '' && Number.isFinite(Number(product.arPointX)) ? Number(product.arPointX) : null;
+    state.currentArPointY = product?.arPointY !== null && product?.arPointY !== undefined && product?.arPointY !== '' && Number.isFinite(Number(product.arPointY)) ? Number(product.arPointY) : null;
+    state.currentArRecordedAt = product?.arRecordedAt || '';
     updateImagePreview();
+    updateArReferencePreview();
     syncProductLocationFields();
     $('#productQrBtn')?.classList.toggle('hidden', !product);
     const saveProductQrBtn = $('#saveProductQrBtn');
@@ -914,6 +932,10 @@
       locationNote: locationId ? $('#productLocationNote').value.trim() : '',
       description: $('#productDescription').value.trim(),
       imageData: state.currentImageData || '',
+      arReferenceImage: state.currentArReferenceImage || '',
+      arPointX: Number.isFinite(state.currentArPointX) ? state.currentArPointX : null,
+      arPointY: Number.isFinite(state.currentArPointY) ? state.currentArPointY : null,
+      arRecordedAt: state.currentArRecordedAt || '',
       createdAt: existing?.createdAt || now,
       updatedAt: now
     };
@@ -978,6 +1000,129 @@
     }
     preview.classList.remove('hidden');
     preview.innerHTML = `<img src="${state.currentImageData}" alt="Anteprima confezione">`;
+  }
+
+  function updateArReferencePreview() {
+    const preview = $('#productArPreview');
+    const image = $('#productArPreviewImage');
+    const marker = $('#productArPreviewMarker');
+    const remove = $('#removeArPositionBtn');
+    const hasReference = Boolean(state.currentArReferenceImage);
+    preview?.classList.toggle('hidden', !hasReference);
+    remove?.classList.toggle('hidden', !hasReference);
+    if (!hasReference) return;
+    image.src = state.currentArReferenceImage;
+    positionReferenceMarker(marker, state.currentArPointX, state.currentArPointY);
+    $('#productArStatus').textContent = state.currentArRecordedAt
+      ? `Riferimento registrato il ${formatDateTime(state.currentArRecordedAt)}.`
+      : 'Riferimento visivo registrato.';
+  }
+
+  async function openArCapture() {
+    const locationId = $('#productLocation').value;
+    if (!locationId) {
+      notify('Seleziona o scansiona prima l’area di stoccaggio.', 'error');
+      $('#productLocation').focus();
+      return;
+    }
+    const productName = $('#productName').value.trim() || 'Nuovo prodotto';
+    $('#arCaptureProductName').textContent = productName;
+    state.arCapturePoint = null;
+    $('#arCaptureMarker').classList.add('hidden');
+    $('#saveArCaptureBtn').disabled = true;
+    $('#arCaptureHelp').textContent = 'Inquadra il ripiano o il posto dove si trova il prodotto, poi tocca quel punto.';
+    $('#arCaptureDialog').showModal();
+    try {
+      state.arCaptureStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+      $('#arCaptureVideo').srcObject = state.arCaptureStream;
+      await $('#arCaptureVideo').play();
+    } catch (error) {
+      console.error(error);
+      $('#arCaptureHelp').textContent = 'Fotocamera non disponibile. Controlla il permesso del browser.';
+      notify('Fotocamera non disponibile.', 'error');
+    }
+  }
+
+  function setArCapturePoint(event) {
+    const stage = $('#arCaptureStage');
+    const rect = stage.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const x = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const y = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
+    state.arCapturePoint = { x, y };
+    const marker = $('#arCaptureMarker');
+    marker.style.left = `${x * 100}%`;
+    marker.style.top = `${y * 100}%`;
+    marker.classList.remove('hidden');
+    $('#saveArCaptureBtn').disabled = false;
+    $('#arCaptureHelp').textContent = 'Punto selezionato. Puoi toccare di nuovo per correggerlo oppure salvare.';
+  }
+
+  function captureVisibleVideoFrame(video, stage) {
+    const rect = stage.getBoundingClientRect();
+    const targetWidth = 720;
+    const aspect = rect.width > 0 && rect.height > 0 ? rect.width / rect.height : 3 / 4;
+    const canvas = document.createElement('canvas');
+    canvas.width = targetWidth;
+    canvas.height = Math.round(targetWidth / aspect);
+    const context = canvas.getContext('2d');
+    if (!context || !video.videoWidth || !video.videoHeight) throw new Error('immagine fotocamera non pronta');
+
+    const sourceAspect = video.videoWidth / video.videoHeight;
+    let sx = 0, sy = 0, sw = video.videoWidth, sh = video.videoHeight;
+    if (sourceAspect > aspect) {
+      sw = video.videoHeight * aspect;
+      sx = (video.videoWidth - sw) / 2;
+    } else {
+      sh = video.videoWidth / aspect;
+      sy = (video.videoHeight - sh) / 2;
+    }
+    context.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.72);
+  }
+
+  function saveArCapture() {
+    if (!state.arCapturePoint) return notify('Tocca prima il punto esatto sullo schermo.', 'error');
+    try {
+      state.currentArReferenceImage = captureVisibleVideoFrame($('#arCaptureVideo'), $('#arCaptureStage'));
+      state.currentArPointX = state.arCapturePoint.x;
+      state.currentArPointY = state.arCapturePoint.y;
+      state.currentArRecordedAt = new Date().toISOString();
+      updateArReferencePreview();
+      closeArCapture();
+      notify('Posizione visiva registrata. Salva ora il prodotto.', 'success');
+    } catch (error) {
+      console.error(error);
+      notify(`Impossibile salvare il riferimento: ${error.message || 'errore fotocamera'}`, 'error');
+    }
+  }
+
+  function removeArReference() {
+    state.currentArReferenceImage = '';
+    state.currentArPointX = null;
+    state.currentArPointY = null;
+    state.currentArRecordedAt = '';
+    updateArReferencePreview();
+    notify('Riferimento AR rimosso. Salva il prodotto per confermare.', 'success');
+  }
+
+  function closeArCapture() {
+    stopArCaptureCamera();
+    if ($('#arCaptureDialog').open) $('#arCaptureDialog').close();
+  }
+
+  function stopArCaptureCamera() {
+    state.arCaptureStream?.getTracks?.().forEach(track => track.stop());
+    state.arCaptureStream = null;
+    if ($('#arCaptureVideo')) $('#arCaptureVideo').srcObject = null;
+  }
+
+  function positionReferenceMarker(marker, x, y) {
+    const safeX = Number.isFinite(Number(x)) ? Number(x) : 0.5;
+    const safeY = Number.isFinite(Number(y)) ? Number(y) : 0.5;
+    if (!marker) return;
+    marker.style.left = `${Math.min(1, Math.max(0, safeX)) * 100}%`;
+    marker.style.top = `${Math.min(1, Math.max(0, safeY)) * 100}%`;
   }
 
   function openLocationForm(location = null, code = '') {
@@ -1291,7 +1436,8 @@
           ${detailField('Descrizione', product.description || 'Nessuna descrizione', true)}
           ${detailField('Ultimo aggiornamento', formatDateTime(product.updatedAt || product.createdAt), true)}
         </div>
-      </div>`;
+      </div>
+      ${product.arReferenceImage ? `<section class="detail-ar-reference"><h3>Riferimento visivo AR</h3><div class="ar-reference-image-wrap"><img src="${product.arReferenceImage}" alt="Riferimento visivo della posizione"><span class="ar-reference-marker" style="left:${(Number(product.arPointX ?? .5) * 100)}%;top:${(Number(product.arPointY ?? .5) * 100)}%"></span></div><p>Usa questa immagine dopo avere verificato il QR dell’area.</p></section>` : ''}`;
     $('#detailProductFindBtn').disabled = !location;
     $('#productDetailDialog').showModal();
   }
@@ -1873,25 +2019,42 @@
     if (!product || !location) return notify('Il prodotto non ha un’area valida.', 'error');
 
     state.arProductId = productId;
-    $('#arProductName').textContent = product.name;
-    $('#arLocationPath').textContent = productLocationPath(product);
     const exact = productExactLocation(product, location);
-    $('#arLocationNote').textContent = [location.note, exact.note].filter(Boolean).join(' · ') || 'Raggiungi l’area, scansiona il suo QR e segui i dettagli di ripiano e posto.';
-    $('#arTargetLabel').textContent = 'Scansiona il QR dell’area';
-    $('#arLockBadge').textContent = 'Da calibrare';
+    $('#arProductName').textContent = product.name;
+    $('#arLocationPath').textContent = locationDisplayName(location);
+    $('#arDestinationGrid').innerHTML = [
+      arDestinationCell('Area', locationDisplayName(location)),
+      arDestinationCell('Tipo', locationType(location)),
+      arDestinationCell('Zona / reparto', location.zone || '—'),
+      arDestinationCell('Piano', exact.aisle || '—'),
+      arDestinationCell('Posizione', exact.rack || '—'),
+      arDestinationCell('Profondità', exact.shelf || '—'),
+      arDestinationCell('Dettaglio', exact.bin || '—')
+    ].join('');
+    $('#arLocationNote').textContent = [location.note, exact.note].filter(Boolean).join(' · ') || 'Raggiungi l’area indicata e verifica il suo QR.';
+    $('#arTargetLabel').textContent = 'Raggiungi l’area e scansiona il suo QR';
+    $('#arLockBadge').textContent = 'Area non verificata';
     $('#arLockBadge').classList.remove('locked');
     $('#completeFindBtn').classList.add('hidden');
     $('#calibrateArBtn').classList.remove('hidden');
+    $('#arReferencePanel').classList.add('hidden');
 
     if (calibratedLocationId === location.id) {
-      $('#arTargetLabel').textContent = `Area confermata: ${location.code} · ${productLocationExactText(product) || 'segui i dettagli indicati'}`;
+      $('#arTargetLabel').textContent = product.arReferenceImage
+        ? 'Area verificata. Confronta la foto e cerca il punto indicato.'
+        : 'Area verificata. Segui Piano, Posizione e Profondità.';
       $('#arLockBadge').textContent = 'Area verificata';
       $('#arLockBadge').classList.add('locked');
       $('#completeFindBtn').classList.remove('hidden');
       $('#calibrateArBtn').classList.add('hidden');
+      if (product.arReferenceImage) {
+        $('#arReferenceImage').src = product.arReferenceImage;
+        positionReferenceMarker($('#arReferenceMarker'), product.arPointX, product.arPointY);
+        $('#arReferencePanel').classList.remove('hidden');
+      }
       if (navigator.vibrate) navigator.vibrate([80, 50, 80]);
     } else if (wrongCode) {
-      $('#arTargetLabel').textContent = `QR errato: ${wrongCode}. Cerca ${location.code}`;
+      $('#arTargetLabel').textContent = `QR errato: ${wrongCode}. Cerca il QR ${location.code}`;
       $('#arLockBadge').textContent = 'Area errata';
     }
 
@@ -1902,8 +2065,12 @@
       await $('#arVideo').play();
     } catch (error) {
       console.error(error);
-      $('#arTargetLabel').textContent = 'Fotocamera non disponibile: usa il percorso testuale.';
+      $('#arTargetLabel').textContent = 'Fotocamera non disponibile: usa i dati testuali della posizione.';
     }
+  }
+
+  function arDestinationCell(label, value) {
+    return `<div class="ar-destination-cell"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value || '—'))}</strong></div>`;
   }
 
   function calibrateArGuide() {

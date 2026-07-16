@@ -615,3 +615,87 @@ tbody tr:last-child td { border-bottom: 0; }
   .location-material-head,
   .location-material-row { min-width: 650px; }
 }
+
+
+/* Versione 6.4: guida AR leggibile e posizione visiva assistita */
+.ar-guide-card { max-height: 58vh; overflow: auto; }
+.ar-guide-heading strong { font-size: 22px; }
+.ar-destination-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.ar-destination-cell {
+  min-width: 0;
+  padding: 9px;
+  border-radius: 11px;
+  background: rgba(255,255,255,.09);
+  border: 1px solid rgba(255,255,255,.12);
+}
+.ar-destination-cell small { display: block; }
+.ar-destination-cell strong { font-size: 15px; overflow-wrap: anywhere; }
+.ar-reference-panel { display: grid; gap: 8px; }
+.ar-reference-panel-heading { display: flex; justify-content: space-between; gap: 10px; align-items: end; }
+.ar-reference-panel-heading small { text-align: right; max-width: 240px; }
+.ar-reference-image-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #111;
+  border: 1px solid rgba(255,255,255,.2);
+}
+.ar-reference-image-wrap img { width: 100%; display: block; max-height: 42vh; object-fit: contain; }
+.ar-reference-marker {
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  transform: translate(-50%, -50%);
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 7px rgba(41,163,106,.65), 0 3px 12px rgba(0,0,0,.7);
+}
+.ar-reference-marker::before,
+.ar-reference-marker::after { content: ""; position: absolute; background: #fff; left: 50%; top: 50%; transform: translate(-50%,-50%); }
+.ar-reference-marker::before { width: 24px; height: 2px; }
+.ar-reference-marker::after { width: 2px; height: 24px; }
+.ar-reference-editor {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+.ar-reference-editor-copy { display: grid; gap: 4px; }
+.ar-reference-editor-copy small { color: var(--muted); line-height: 1.4; }
+.ar-reference-preview { display: grid; gap: 8px; }
+.ar-reference-preview .ar-reference-image-wrap { width: min(100%, 430px); border-color: var(--line); background: #e9eef3; }
+.ar-reference-preview p { margin: 0; color: var(--muted); font-size: 13px; }
+.detail-ar-reference { margin-top: 20px; }
+.detail-ar-reference h3 { margin: 0 0 10px; }
+.detail-ar-reference p { color: var(--muted); }
+.detail-ar-reference .ar-reference-image-wrap { width: min(100%, 620px); border-color: var(--line); }
+.ar-capture-stage { position: absolute; inset: 0; z-index: 2; border: 0; background: transparent; padding: 0; }
+.ar-capture-card .ar-topbar, .ar-capture-card .ar-bottom-card { z-index: 4; }
+.ar-capture-marker {
+  position: absolute;
+  z-index: 3;
+  transform: translate(-50%, -50%);
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 4px solid #fff;
+  background: rgba(41,163,106,.72);
+  color: #fff;
+  font-size: 38px;
+  box-shadow: 0 0 0 10px rgba(41,163,106,.28), 0 6px 20px rgba(0,0,0,.42);
+}
+.ar-capture-bottom { z-index: 5; }
+@media (max-width: 560px) {
+  .ar-destination-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ar-guide-card { max-height: 62vh; }
+  .ar-reference-panel-heading { display: grid; }
+  .ar-reference-panel-heading small { text-align: left; }
+}
