@@ -524,3 +524,90 @@ tbody tr:last-child td { border-bottom: 0; }
 .exact-location-heading strong { font-size: 15px; }
 .exact-location-heading small { color: var(--muted); }
 .exact-location-group.is-disabled { opacity: .58; }
+
+
+/* v6.3: visualizzazione Materiale / Piano / Posizione / Profondità */
+.material-location-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.7fr) repeat(3, minmax(78px, .65fr));
+  gap: 1px;
+  margin: 10px 0;
+  overflow: hidden;
+  border: 1px solid #cdd8e2;
+  border-radius: 11px;
+  background: #cdd8e2;
+}
+.material-location-cell {
+  min-width: 0;
+  padding: 9px 10px;
+  background: #f8fbfd;
+  text-align: center;
+}
+.material-location-cell:first-child { text-align: left; }
+.material-location-cell small {
+  display: block;
+  color: #5b6977;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.material-location-cell strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--brand);
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.location-material-table {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.location-material-head,
+.location-material-row {
+  display: grid;
+  grid-template-columns: minmax(170px, 1.7fr) repeat(3, minmax(72px, .65fr)) minmax(72px, .7fr);
+  align-items: center;
+  gap: 0;
+}
+.location-material-head {
+  background: #eef3f7;
+  color: #526171;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.location-material-head span,
+.location-material-row > span,
+.location-material-row > b {
+  padding: 10px 11px;
+  border-right: 1px solid var(--line);
+  text-align: center;
+}
+.location-material-head span:first-child,
+.location-material-row > span:first-child { text-align: left; }
+.location-material-head span:last-child,
+.location-material-row > b:last-child { border-right: 0; }
+.location-product-link.location-material-row {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  border-top: 1px solid var(--line);
+  padding: 0;
+  background: #fff;
+  text-align: left;
+}
+.location-product-link.location-material-row:hover { background: #eef6fc; }
+.location-material-row .material-name strong { color: var(--brand); }
+.location-material-row .material-name small { display: block; margin-top: 2px; }
+
+@media (max-width: 700px) {
+  .material-location-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .material-location-cell:first-child { text-align: center; }
+  .location-material-table { overflow-x: auto; }
+  .location-material-head,
+  .location-material-row { min-width: 650px; }
+}

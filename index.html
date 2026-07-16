@@ -9,12 +9,12 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=6.2.0">
+  <link rel="stylesheet" href="styles.css?v=6.3.0">
   <script defer src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
-  <script defer src="qrcode-local.js?v=6.2.0"></script>
-  <script defer src="db.js?v=6.2.0"></script>
-  <script defer src="cloud.js?v=6.2.0"></script>
-  <script defer src="app.js?v=6.2.0"></script>
+  <script defer src="qrcode-local.js?v=6.3.0"></script>
+  <script defer src="db.js?v=6.3.0"></script>
+  <script defer src="cloud.js?v=6.3.0"></script>
+  <script defer src="app.js?v=6.3.0"></script>
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -261,7 +261,7 @@
       </div>
       <input id="productId" name="id" type="hidden">
       <div class="form-grid two-cols">
-        <label class="field field-span"><span>Codice a barre (facoltativo)</span><div class="input-action"><input id="productBarcode" name="barcode" placeholder="Scansiona il codice oppure lascia vuoto"><button id="scanProductFieldBtn" class="mini-btn" type="button">📷</button></div><small>Se il prodotto non ha un barcode, l’app creerà comunque un QR interno univoco.</small></label>
+        <label class="field field-span"><span>Materiale / codice prodotto (facoltativo)</span><div class="input-action"><input id="productBarcode" name="barcode" placeholder="Scansiona il barcode del materiale oppure lascia vuoto"><button id="scanProductFieldBtn" class="mini-btn" type="button">📷</button></div><small>Puoi usare il codice materiale stampato sulla confezione. Se manca, l’app creerà un QR interno univoco.</small></label>
         <label class="field field-span"><span>Nome prodotto *</span><input id="productName" name="name" required></label>
         <label class="field"><span>Codice interno / SKU</span><input id="productSku" name="sku"></label>
         <label class="field"><span>Categoria</span><input id="productCategory" name="category"></label>
@@ -272,13 +272,13 @@
         <label class="field"><span>Scadenza</span><input id="productExpiry" name="expiry" type="date"></label>
         <label class="field field-span"><span>Area di stoccaggio</span><div class="input-action"><select id="productLocation" name="locationId"><option value="">Nessuna posizione</option></select><button id="scanProductLocationBtn" class="mini-btn" type="button" title="Scansiona il QR dell’area">📷</button></div><small>Seleziona oppure scansiona il QR del magazzino, Cardex, scaffalatura o area dove si trova il prodotto.</small></label>
         <div id="productExactLocationFields" class="exact-location-group field-span">
-          <div class="exact-location-heading"><strong>Collocazione esatta del prodotto</strong><small>Compila i dettagli interni all’area selezionata.</small></div>
+          <div class="exact-location-heading"><strong>Dati di ubicazione del materiale</strong><small>Inserisci Piano, Posizione e Profondità come sul display del magazzino.</small></div>
           <div class="form-grid two-cols">
-            <label class="field"><span>Corsia / colonna</span><input id="productLocationAisle" name="locationAisle" placeholder="es. 04 o Colonna B"></label>
-            <label class="field"><span>Scaffale / cassetto</span><input id="productLocationRack" name="locationRack" placeholder="es. 12 o Cassetto 18"></label>
-            <label class="field"><span>Ripiano</span><input id="productLocationShelf" name="locationShelf" placeholder="es. 03"></label>
-            <label class="field"><span>Posto / casella</span><input id="productLocationBin" name="locationBin" placeholder="es. 02 o Casella C"></label>
-            <label class="field field-span"><span>Indicazione precisa</span><input id="productLocationNote" name="locationNote" placeholder="es. lato destro, seconda fila, contenitore blu"></label>
+            <label class="field"><span>Piano</span><input id="productLocationAisle" name="locationAisle" inputmode="numeric" placeholder="es. 14"></label>
+            <label class="field"><span>Posizione</span><input id="productLocationRack" name="locationRack" inputmode="numeric" placeholder="es. 03"></label>
+            <label class="field"><span>Profondità</span><input id="productLocationShelf" name="locationShelf" inputmode="numeric" placeholder="es. 01"></label>
+            <label class="field"><span>Dettaglio / casella</span><input id="productLocationBin" name="locationBin" placeholder="facoltativo, es. lato destro"></label>
+            <label class="field field-span"><span>Indicazioni aggiuntive</span><input id="productLocationNote" name="locationNote" placeholder="es. contenitore blu, seconda fila"></label>
           </div>
         </div>
         <label class="field field-span"><span>Descrizione / contenuto confezione</span><textarea id="productDescription" name="description" rows="3"></textarea></label>
@@ -348,13 +348,13 @@
         <label class="field"><span>Quantità *</span><input id="movementQuantity" name="quantity" type="number" min="0" step="0.01" value="1" required></label>
         <label id="movementDestinationField" class="field field-span hidden"><span>Nuova area di stoccaggio *</span><div class="input-action"><select id="movementDestination" name="destinationId"><option value="">Seleziona area</option></select><button id="scanMovementLocationBtn" class="mini-btn" type="button" title="Scansiona il QR dell’area">📷</button></div></label>
         <div id="movementExactFields" class="exact-location-group field-span hidden">
-          <div class="exact-location-heading"><strong>Nuova collocazione esatta</strong><small>Puoi spostare il prodotto anche all’interno della stessa area.</small></div>
+          <div class="exact-location-heading"><strong>Nuova ubicazione del materiale</strong><small>Inserisci Piano, Posizione e Profondità della nuova collocazione.</small></div>
           <div class="form-grid two-cols">
-            <label class="field"><span>Corsia / colonna</span><input id="movementLocationAisle" name="locationAisle"></label>
-            <label class="field"><span>Scaffale / cassetto</span><input id="movementLocationRack" name="locationRack"></label>
-            <label class="field"><span>Ripiano</span><input id="movementLocationShelf" name="locationShelf"></label>
-            <label class="field"><span>Posto / casella</span><input id="movementLocationBin" name="locationBin"></label>
-            <label class="field field-span"><span>Indicazione precisa</span><input id="movementLocationNote" name="locationNote" placeholder="es. lato destro, seconda fila"></label>
+            <label class="field"><span>Piano</span><input id="movementLocationAisle" name="locationAisle" inputmode="numeric"></label>
+            <label class="field"><span>Posizione</span><input id="movementLocationRack" name="locationRack" inputmode="numeric"></label>
+            <label class="field"><span>Profondità</span><input id="movementLocationShelf" name="locationShelf" inputmode="numeric"></label>
+            <label class="field"><span>Dettaglio / casella</span><input id="movementLocationBin" name="locationBin"></label>
+            <label class="field field-span"><span>Indicazioni aggiuntive</span><input id="movementLocationNote" name="locationNote" placeholder="es. contenitore blu, seconda fila"></label>
           </div>
         </div>
         <label class="field field-span"><span>Nota del movimento</span><textarea id="movementNote" name="note" rows="3"></textarea></label>

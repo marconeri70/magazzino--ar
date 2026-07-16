@@ -373,6 +373,8 @@
 
     container.innerHTML = products.map(product => {
       const location = getLocation(product.locationId);
+      const exact = productExactLocation(product, location);
+      const material = productMaterialCode(product);
       const low = isLowStock(product);
       const expired = product.expiry && new Date(`${product.expiry}T23:59:59`) < new Date();
       return `
@@ -385,8 +387,14 @@
               ${expired ? '<span class="chip danger">Scaduto</span>' : ''}
             </div>
             <p>${escapeHtml(product.description || product.category || 'Nessuna descrizione')}</p>
+            <div class="material-location-grid" aria-label="Dati ubicazione materiale">
+              ${materialPositionCell('Materiale', material)}
+              ${materialPositionCell('Piano', exact.aisle || '—')}
+              ${materialPositionCell('Posizione', exact.rack || '—')}
+              ${materialPositionCell('Profondità', exact.shelf || '—')}
+            </div>
             <div class="meta-row">
-              ${product.barcode ? `<span class="chip">Barcode ${escapeHtml(product.barcode)}</span>` : '<span class="chip">QR interno</span>'}
+              ${product.barcode ? `<span class="chip">Codice ${escapeHtml(product.barcode)}</span>` : '<span class="chip">QR interno</span>'}
               ${product.lot ? `<span class="chip">Lotto ${escapeHtml(product.lot)}</span>` : ''}
               ${product.expiry ? `<span class="chip">Scad. ${formatDate(product.expiry)}</span>` : ''}
               <span class="chip">⌖ ${escapeHtml(location ? productLocationPath(product) : 'Senza posizione')}</span>
@@ -549,10 +557,10 @@
             ${routeStep('Area', locationDisplayName(location))}
             ${routeStep('Tipo', locationType(location))}
             ${routeStep('Zona', location.zone)}
-            ${routeStep('Corsia/colonna', exact.aisle)}
-            ${routeStep('Scaffale/cassetto', exact.rack)}
-            ${routeStep('Ripiano', exact.shelf)}
-            ${routeStep('Posto/casella', exact.bin)}
+            ${routeStep('Piano', exact.aisle)}
+            ${routeStep('Posizione', exact.rack)}
+            ${routeStep('Profondità', exact.shelf)}
+            ${routeStep('Dettaglio', exact.bin)}
           </div>` : ''}
         </div>
         ${location?.note ? `<div class="inline-message">Per raggiungere l’area: ${escapeHtml(location.note)}</div>` : ''}
@@ -736,7 +744,7 @@
       ['Archivio offline', 'indexedDB' in window],
       ['Installazione PWA', 'serviceWorker' in navigator],
       ['Lettura barcode nativa', 'BarcodeDetector' in window],
-      ['Generatore QR locale v6.2', Boolean(window.QRCode?.toCanvas)],
+      ['Generatore QR locale v6.3', Boolean(window.QRCode?.toCanvas)],
       ['Sincronizzazione Cloudflare', Boolean(window.magazzinoCloud)],
       ['Guida AR con fotocamera', Boolean(navigator.mediaDevices?.getUserMedia)],
       ['WebXR avanzato', 'xr' in navigator]
@@ -1040,7 +1048,7 @@
         $('#movementLocationNote').value = exact.note;
       }
       syncMovementDestinationFields(false);
-      warning.textContent = 'Lo spostamento trasferisce tutta la giacenza. Puoi cambiare area oppure soltanto scaffale, ripiano o posto nella stessa area.';
+      warning.textContent = 'Lo spostamento trasferisce tutta la giacenza. Puoi cambiare area oppure soltanto Piano, Posizione o Profondità nella stessa area.';
       warning.classList.remove('hidden');
     } else if (type === 'ADJUST') {
       quantity.value = product ? product.quantity : 0;
@@ -1234,17 +1242,17 @@
           ${detailField('Nome prodotto', product.name, true)}
           ${detailField('Quantità', `${formatNumber(product.quantity)} ${product.unit || 'pz'}`)}
           ${detailField('Categoria', product.category || '—')}
-          ${detailField('Barcode', product.barcode || 'QR interno')}
+          ${detailField('Materiale / codice', productMaterialCode(product))}
           ${detailField('Codice interno / SKU', product.sku || '—')}
           ${detailField('Lotto', product.lot || '—')}
           ${detailField('Scadenza', product.expiry ? formatDate(product.expiry) : '—')}
           ${detailField('Scorta minima', `${formatNumber(product.minStock)} ${product.unit || 'pz'}`)}
           ${detailField('Area di stoccaggio', location ? baseLocationPath(location) : 'Non assegnata', true)}
-          ${detailField('Corsia / colonna', exact.aisle || '—')}
-          ${detailField('Scaffale / cassetto', exact.rack || '—')}
-          ${detailField('Ripiano', exact.shelf || '—')}
-          ${detailField('Posto / casella', exact.bin || '—')}
-          ${detailField('Indicazione precisa', exact.note || '—', true)}
+          ${detailField('Piano', exact.aisle || '—')}
+          ${detailField('Posizione', exact.rack || '—')}
+          ${detailField('Profondità', exact.shelf || '—')}
+          ${detailField('Dettaglio / casella', exact.bin || '—')}
+          ${detailField('Indicazioni aggiuntive', exact.note || '—', true)}
           ${detailField('Posizione completa', location ? productLocationPath(product) : 'Non assegnata', true)}
           ${detailField('Descrizione', product.description || 'Nessuna descrizione', true)}
           ${detailField('Ultimo aggiornamento', formatDateTime(product.updatedAt || product.createdAt), true)}
@@ -1270,12 +1278,23 @@
         ${detailField('Indicazioni per raggiungerla', location.note || 'Nessuna indicazione', true)}
       </div>
       <div class="location-products">
-        <h3>Prodotti in questa area</h3>
-        ${products.length ? products.map(product => `
-          <button class="location-product-link" data-detail-product="${product.id}" type="button">
-            <span><strong>${escapeHtml(product.name)}</strong><small>${escapeHtml(productLocationPath(product))}</small></span>
-            <b>${formatNumber(product.quantity)} ${escapeHtml(product.unit || 'pz')}</b>
-          </button>`).join('') : '<div class="empty-state">Nessun prodotto assegnato a questa area.</div>'}
+        <h3>Materiali presenti in questa area</h3>
+        ${products.length ? `
+          <div class="location-material-table" role="table" aria-label="Materiali e ubicazioni">
+            <div class="location-material-head" role="row">
+              <span>Materiale</span><span>Piano</span><span>Posizione</span><span>Profondità</span><span>Qtà</span>
+            </div>
+            ${products.map(product => {
+              const exact = productExactLocation(product, location);
+              return `<button class="location-product-link location-material-row" data-detail-product="${product.id}" type="button" role="row">
+                <span class="material-name"><strong>${escapeHtml(productMaterialCode(product))}</strong><small>${escapeHtml(product.name)}</small></span>
+                <span>${escapeHtml(exact.aisle || '—')}</span>
+                <span>${escapeHtml(exact.rack || '—')}</span>
+                <span>${escapeHtml(exact.shelf || '—')}</span>
+                <b>${formatNumber(product.quantity)} ${escapeHtml(product.unit || 'pz')}</b>
+              </button>`;
+            }).join('')}
+          </div>` : '<div class="empty-state">Nessun prodotto assegnato a questa area.</div>'}
       </div>`;
     $('#locationDetailDialog').showModal();
   }
@@ -1652,9 +1671,9 @@
     await loadState();
 
     const products = [
-      { id: uid(), barcode: `8000000${suffix}1`, name: 'Cuscinetto dimostrativo 6204', sku: 'CUS-6204', category: 'Cuscinetti', quantity: 48, unit: 'pz', minStock: 20, lot: 'L26-A1', expiry: '', locationId: locations[0].id, locationAisle: 'Colonna B', locationRack: 'Cassetto 18', locationShelf: '', locationBin: 'Casella 3', locationNote: 'Scomparto anteriore', description: 'Confezione cuscinetti per linea produttiva', imageData: '', createdAt: now, updatedAt: now },
-      { id: uid(), barcode: `8000000${suffix}2`, name: 'Anello OR 42 mm', sku: 'OR-042', category: 'Guarnizioni', quantity: 12, unit: 'pz', minStock: 15, lot: 'OR2607', expiry: '', locationId: locations[1].id, locationAisle: 'Corsia 1', locationRack: 'Modulo 2', locationShelf: 'Ripiano 3', locationBin: 'Contenitore blu', locationNote: 'Lato destro', description: 'Anello di tenuta in gomma', imageData: '', createdAt: now, updatedAt: now },
-      { id: uid(), barcode: `8000000${suffix}3`, name: 'Lubrificante tecnico', sku: 'LUB-500', category: 'Lubrificanti', quantity: 8, unit: 'confezioni', minStock: 4, lot: 'LB-778', expiry: nextDate(240), locationId: locations[2].id, locationAisle: 'Corsia 3', locationRack: 'Scaffale 5', locationShelf: 'Ripiano 2', locationBin: 'Posto 4', locationNote: 'Vaschetta di contenimento', description: 'Flacone da 500 ml', imageData: '', createdAt: now, updatedAt: now }
+      { id: uid(), barcode: `8000000${suffix}1`, name: 'Cuscinetto dimostrativo 6204', sku: 'CUS-6204', category: 'Cuscinetti', quantity: 48, unit: 'pz', minStock: 20, lot: 'L26-A1', expiry: '', locationId: locations[0].id, locationAisle: '14', locationRack: '0', locationShelf: '0', locationBin: 'Casella 3', locationNote: 'Scomparto anteriore', description: 'Confezione cuscinetti per linea produttiva', imageData: '', createdAt: now, updatedAt: now },
+      { id: uid(), barcode: `8000000${suffix}2`, name: 'Anello OR 42 mm', sku: 'OR-042', category: 'Guarnizioni', quantity: 12, unit: 'pz', minStock: 15, lot: 'OR2607', expiry: '', locationId: locations[1].id, locationAisle: '3', locationRack: '0', locationShelf: '0', locationBin: 'Contenitore blu', locationNote: 'Lato destro', description: 'Anello di tenuta in gomma', imageData: '', createdAt: now, updatedAt: now },
+      { id: uid(), barcode: `8000000${suffix}3`, name: 'Lubrificante tecnico', sku: 'LUB-500', category: 'Lubrificanti', quantity: 8, unit: 'confezioni', minStock: 4, lot: 'LB-778', expiry: nextDate(240), locationId: locations[2].id, locationAisle: '9', locationRack: '2', locationShelf: '1', locationBin: 'Posto 4', locationNote: 'Vaschetta di contenimento', description: 'Flacone da 500 ml', imageData: '', createdAt: now, updatedAt: now }
     ];
     for (const product of products) {
       await warehouseDB.put('products', product);
@@ -1977,6 +1996,15 @@
     return pieces.join(' › ');
   }
 
+  function productMaterialCode(product) {
+    if (!product) return 'QR interno';
+    return String(product.barcode || product.sku || `QR-${String(product.id || '').slice(-8)}` || 'QR interno').trim();
+  }
+
+  function materialPositionCell(label, value) {
+    return `<div class="material-location-cell"><small>${escapeHtml(label)}</small><strong>${escapeHtml(String(value || '—'))}</strong></div>`;
+  }
+
   function productExactLocation(product, location = getLocation(product?.locationId)) {
     if (!product) return { aisle: '', rack: '', shelf: '', bin: '', note: '' };
     return {
@@ -1991,10 +2019,10 @@
   function productLocationExactText(product) {
     const exact = productExactLocation(product);
     const pieces = [
-      exact.aisle && `Corsia/Colonna ${exact.aisle}`,
-      exact.rack && `Scaffale/Cassetto ${exact.rack}`,
-      exact.shelf && `Ripiano ${exact.shelf}`,
-      exact.bin && `Posto/Casella ${exact.bin}`,
+      exact.aisle && `Piano ${exact.aisle}`,
+      exact.rack && `Posizione ${exact.rack}`,
+      exact.shelf && `Profondità ${exact.shelf}`,
+      exact.bin && `Dettaglio ${exact.bin}`,
       exact.note
     ].filter(Boolean);
     return pieces.join(' › ');
