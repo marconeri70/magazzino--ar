@@ -2,7 +2,7 @@
   'use strict';
 
   const DB_NAME = 'magazzino-ar-db';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const STORES = ['products', 'locations', 'movements', 'settings'];
 
   class WarehouseDB {
@@ -40,9 +40,33 @@
 
           if (!db.objectStoreNames.contains('products')) {
             const store = db.createObjectStore('products', { keyPath: 'id' });
-            store.createIndex('barcode', 'barcode', { unique: true });
+            store.createIndex('barcodeKey', 'barcodeKey', { unique: true });
             store.createIndex('name', 'name', { unique: false });
             store.createIndex('locationId', 'locationId', { unique: false });
+          } else {
+            const store = request.transaction.objectStore('products');
+            if (store.indexNames.contains('barcode')) store.deleteIndex('barcode');
+            if (!store.indexNames.contains('barcodeKey')) {
+              store.createIndex('barcodeKey', 'barcodeKey', { unique: true });
+            }
+
+            // Migra i prodotti già salvati: indicizza solo barcode reali, mai stringhe vuote.
+            const cursorRequest = store.openCursor();
+            cursorRequest.onsuccess = () => {
+              const cursor = cursorRequest.result;
+              if (!cursor) return;
+              const value = cursor.value || {};
+              const normalizedBarcode = String(value.barcode || '').trim().replace(/\s+/g, '');
+              if (normalizedBarcode) {
+                value.barcode = normalizedBarcode;
+                value.barcodeKey = normalizedBarcode;
+              } else {
+                delete value.barcode;
+                delete value.barcodeKey;
+              }
+              cursor.update(value);
+              cursor.continue();
+            };
           }
 
           if (!db.objectStoreNames.contains('locations')) {

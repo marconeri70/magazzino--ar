@@ -1,7 +1,7 @@
 'use strict';
 
-const CACHE_NAME = 'magazzino-ar-v6-3-material-position';
-const VERSION = '6.3.0';
+const CACHE_NAME = 'magazzino-ar-v6-3-1-product-fix';
+const VERSION = '6.3.1';
 const APP_SHELL = [
   './',
   './index.html',

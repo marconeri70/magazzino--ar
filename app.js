@@ -873,7 +873,6 @@
     const locationId = $('#productLocation').value;
     const product = {
       id,
-      barcode,
       name: $('#productName').value.trim(),
       sku: $('#productSku').value.trim(),
       category: $('#productCategory').value.trim(),
@@ -893,6 +892,13 @@
       createdAt: existing?.createdAt || now,
       updatedAt: now
     };
+
+    // I prodotti senza barcode non devono condividere un valore vuoto in un indice univoco.
+    // Il campo viene quindi omesso del tutto quando non è presente.
+    if (barcode) {
+      product.barcode = barcode;
+      product.barcodeKey = barcode;
+    }
 
     const oldPositionText = existing ? productLocationPath(existing) : '';
     const newPositionText = productLocationPath(product);
@@ -918,8 +924,11 @@
         setTimeout(() => printProductLabel(savedProduct), 180);
       }
     } catch (error) {
-      console.error(error);
-      notify('Errore durante il salvataggio del prodotto.', 'error');
+      console.error('Salvataggio prodotto:', error);
+      const detail = error?.name === 'ConstraintError'
+        ? 'Il codice prodotto è già utilizzato oppure il vecchio archivio sta trattando un barcode vuoto come duplicato.'
+        : (error?.message || 'errore sconosciuto');
+      notify(`Errore durante il salvataggio: ${detail}`, 'error');
     }
   }
 
