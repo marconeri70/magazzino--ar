@@ -9,12 +9,12 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=6.3.1">
+  <link rel="stylesheet" href="styles.css?v=6.3.2">
   <script defer src="https://cdn.jsdelivr.net/npm/@zxing/browser@0.2.1/umd/zxing-browser.min.js"></script>
-  <script defer src="qrcode-local.js?v=6.3.1"></script>
-  <script defer src="db.js?v=6.3.1"></script>
-  <script defer src="cloud.js?v=6.3.1"></script>
-  <script defer src="app.js?v=6.3.1"></script>
+  <script defer src="qrcode-local.js?v=6.3.2"></script>
+  <script defer src="db.js?v=6.3.2"></script>
+  <script defer src="cloud.js?v=6.3.2"></script>
+  <script defer src="app.js?v=6.3.2"></script>
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -272,7 +272,7 @@
         <label class="field"><span>Scadenza</span><input id="productExpiry" name="expiry" type="date"></label>
         <label class="field field-span"><span>Area di stoccaggio</span><div class="input-action"><select id="productLocation" name="locationId"><option value="">Nessuna posizione</option></select><button id="scanProductLocationBtn" class="mini-btn" type="button" title="Scansiona il QR dell’area">📷</button></div><small>Seleziona oppure scansiona il QR del magazzino, Cardex, scaffalatura o area dove si trova il prodotto.</small></label>
         <div id="productExactLocationFields" class="exact-location-group field-span">
-          <div class="exact-location-heading"><strong>Dati di ubicazione del materiale</strong><small>Inserisci Piano, Posizione e Profondità come sul display del magazzino.</small></div>
+          <div class="exact-location-heading"><strong>Dati di ubicazione del materiale</strong><small id="productLocationRequirement">Puoi compilare subito i dati. Prima di salvare, seleziona o scansiona l’area di stoccaggio.</small></div>
           <div class="form-grid two-cols">
             <label class="field"><span>Piano</span><input id="productLocationAisle" name="locationAisle" inputmode="numeric" placeholder="es. 14"></label>
             <label class="field"><span>Posizione</span><input id="productLocationRack" name="locationRack" inputmode="numeric" placeholder="es. 03"></label>

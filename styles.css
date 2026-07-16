@@ -523,7 +523,11 @@ tbody tr:last-child td { border-bottom: 0; }
 }
 .exact-location-heading strong { font-size: 15px; }
 .exact-location-heading small { color: var(--muted); }
-.exact-location-group.is-disabled { opacity: .58; }
+.exact-location-group.needs-area {
+  border-color: #e2b36f;
+  background: #fffaf1;
+}
+.exact-location-group.needs-area .exact-location-heading small { color: #8a570f; }
 
 
 /* v6.3: visualizzazione Materiale / Piano / Posizione / Profondità */

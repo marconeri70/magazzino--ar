@@ -744,7 +744,7 @@
       ['Archivio offline', 'indexedDB' in window],
       ['Installazione PWA', 'serviceWorker' in navigator],
       ['Lettura barcode nativa', 'BarcodeDetector' in window],
-      ['Generatore QR locale v6.3', Boolean(window.QRCode?.toCanvas)],
+      ['Generatore QR locale v6.3.2', Boolean(window.QRCode?.toCanvas)],
       ['Sincronizzazione Cloudflare', Boolean(window.magazzinoCloud)],
       ['Guida AR con fotocamera', Boolean(navigator.mediaDevices?.getUserMedia)],
       ['WebXR avanzato', 'xr' in navigator]
@@ -846,12 +846,23 @@
   }
 
   function syncProductLocationFields() {
-    const enabled = Boolean($('#productLocation').value);
+    const hasArea = Boolean($('#productLocation').value);
     const group = $('#productExactLocationFields');
-    group.classList.toggle('is-disabled', !enabled);
+    const hint = $('#productLocationRequirement');
+
+    // I campi Piano, Posizione e Profondità devono essere sempre compilabili.
+    // Nella versione precedente venivano disabilitati finché non si selezionava
+    // un'area, dando l'impressione che la nuova scheda prodotto fosse bloccata.
+    group?.classList.toggle('needs-area', !hasArea);
+    if (hint) {
+      hint.textContent = hasArea
+        ? 'Area selezionata: ora puoi completare Piano, Posizione e Profondità.'
+        : 'Puoi compilare subito i dati. Prima di salvare, seleziona o scansiona l’area di stoccaggio.';
+    }
+
     ['#productLocationAisle', '#productLocationRack', '#productLocationShelf', '#productLocationBin', '#productLocationNote'].forEach(selector => {
-      $(selector).disabled = !enabled;
-      if (!enabled) $(selector).value = '';
+      const field = $(selector);
+      if (field) field.disabled = false;
     });
   }
 
@@ -871,6 +882,20 @@
     const quantity = toNumber($('#productQuantity').value);
     const now = new Date().toISOString();
     const locationId = $('#productLocation').value;
+    const exactLocationValues = [
+      $('#productLocationAisle').value,
+      $('#productLocationRack').value,
+      $('#productLocationShelf').value,
+      $('#productLocationBin').value,
+      $('#productLocationNote').value
+    ].map(value => String(value || '').trim());
+
+    if (!locationId && exactLocationValues.some(Boolean)) {
+      notify('Seleziona o scansiona prima l’area di stoccaggio del prodotto.', 'error');
+      $('#productLocation').focus();
+      return;
+    }
+
     const product = {
       id,
       name: $('#productName').value.trim(),
@@ -1927,7 +1952,7 @@
   function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return;
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js?v=6.0.0', { updateViaCache: 'none' })
+      navigator.serviceWorker.register('./sw.js?v=6.3.2', { updateViaCache: 'none' })
         .then(registration => registration.update())
         .catch(error => console.debug('Service worker:', error));
     });
